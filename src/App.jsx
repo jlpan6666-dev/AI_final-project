@@ -31,6 +31,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState('likes'); // 'likes' 或 'newest'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
+  const [cssLoaded, setCssLoaded] = useState(false); // 新增：追蹤 CSS 是否載入完成
 
   // 表單狀態
   const [formData, setFormData] = useState({
@@ -49,7 +50,13 @@ export default function App() {
       const script = document.createElement('script');
       script.id = 'tailwind-cdn';
       script.src = "https://cdn.tailwindcss.com";
+      script.onload = () => {
+        // 給予一點點緩衝時間讓 Tailwind 掃描並生成樣式
+        setTimeout(() => setCssLoaded(true), 50);
+      };
       document.head.appendChild(script);
+    } else {
+      setCssLoaded(true);
     }
   }, []);
 
@@ -215,6 +222,19 @@ export default function App() {
 
   // --- UI 元件 ---
 
+  // 在 Tailwind 尚未完全載入前，使用純內聯樣式顯示過渡畫面，避免無樣式閃爍
+  if (!cssLoaded) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div style={{ width: '48px', height: '48px', border: '4px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <p style={{ marginTop: '20px', color: '#64748b', fontSize: '16px', fontWeight: '600', letterSpacing: '0.05em' }}>系統載入中...</p>
+        <style>{`
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-12">
       {/* 直接寫入自訂 CSS 動畫樣式 */}
@@ -337,6 +357,14 @@ export default function App() {
               const isLikedByMe = user && project.likedBy?.includes(user.uid);
               const rank = index + 1;
 
+              // 擷取網址的網域 (Domain) 來取得網站 Icon
+              let domain = '';
+              try {
+                domain = new URL(project.url).hostname;
+              } catch (e) {
+                console.error("無法解析網址:", project.url);
+              }
+
               return (
                 <div key={project.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col border border-slate-100 relative group">
                   
@@ -349,9 +377,20 @@ export default function App() {
 
                   <div className="p-6 flex-grow flex flex-col">
                     <div className={`mb-4 ${sortBy === 'likes' && rank <= 3 ? 'ml-8' : ''}`}>
-                      <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.systemName}>
-                        {project.systemName}
-                      </h2>
+                      <div className="flex items-center gap-3">
+                        {/* 網站 Icon (Favicon) */}
+                        {domain && (
+                          <img 
+                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} 
+                            alt="Site icon" 
+                            className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm"
+                            onError={(e) => { e.target.style.display = 'none'; }} // 若圖片載入失敗則隱藏
+                          />
+                        )}
+                        <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.systemName}>
+                          {project.systemName}
+                        </h2>
+                      </div>
                       <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-1">
                         <Users size={16} />
                         <span>{project.groupName}</span>
