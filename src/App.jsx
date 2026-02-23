@@ -219,7 +219,7 @@ export default function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!canUpload) {
-      showToast("請先使用 Google 登入才能操作專題", "error");
+      showToast("上傳者請先登入才能操作專題", "error");
       return;
     }
 
@@ -267,11 +267,18 @@ export default function App() {
     
     const isLiked = currentLikedBy.includes(user.uid);
 
-    // 匿名使用者限制檢查：最多 2 個專案
-    if (!isLiked && user.isAnonymous) {
+    // 投票限制檢查 (包含登入者與匿名者)
+    if (!isLiked) {
+      // 1. 檢查使用者是否已經投滿 2 票
       const likedCount = projects.filter(p => p.likedBy?.includes(user.uid)).length;
       if (likedCount >= 2) {
-        showToast("匿名狀態最多只能按讚 2 個專題喔！請登入以解除限制。", "error");
+        showToast("每個帳號/裝置最多只能投 2 票喔！", "error");
+        return;
+      }
+
+      // 2. 檢查該專題是否已經達到 46 票上限
+      if (currentLikedBy.length >= 46) {
+        showToast("這個專題已經達到 46 票的愛心上限囉！", "error");
         return;
       }
     }
@@ -411,7 +418,7 @@ export default function App() {
                   className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
                 >
                   <LogIn size={20} />
-                  <span>上傳者請登入Google帳號</span>
+                  <span>上傳者請登入</span>
                 </button>
               </div>
             )}
@@ -509,8 +516,9 @@ export default function App() {
                             onError={(e) => { e.target.style.display = 'none'; }} // 若圖片載入失敗則隱藏
                           />
                         )}
-                        <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.systemName}>
-                          {project.systemName}
+                        {/* 將原本的 SystemName 換成 Members */}
+                        <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.members}>
+                          {project.members}
                         </h2>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-1">
@@ -524,8 +532,9 @@ export default function App() {
                     </p>
 
                     <div className="bg-slate-50 rounded-lg p-3 mb-6">
-                      <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">組員學號(含組長)</div>
-                      <div className="text-sm text-slate-700 font-medium">{project.members}</div>
+                      {/* 將原本的 Members 換成 SystemName */}
+                      <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">題目名稱 (系統名稱)</div>
+                      <div className="text-sm text-slate-700 font-medium">{project.systemName}</div>
                     </div>
                   </div>
 
@@ -611,7 +620,7 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                      組員學號(含組員) <span className="text-rose-500">*</span>
+                      小組成員 <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
