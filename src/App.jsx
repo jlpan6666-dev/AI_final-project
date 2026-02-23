@@ -606,7 +606,7 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                      組別名稱 <span className="text-rose-500">*</span>
+                      組別 <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
