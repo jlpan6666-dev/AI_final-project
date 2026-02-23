@@ -571,7 +571,10 @@ export default function App() {
 
       {/* 新增專案 Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) closeProjectModal(); }}
+        >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
               <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -704,7 +707,15 @@ export default function App() {
 
       {/* 管理員登入 Modal */}
       {isAdminModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50"
+          onClick={(e) => { 
+            if (e.target === e.currentTarget) {
+              setIsAdminModalOpen(false); 
+              setAdminPwdInput(''); 
+            }
+          }}
+        >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col animate-scale-in">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -748,7 +759,10 @@ export default function App() {
 
       {/* 刪除確認 Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirmId(null); }}
+        >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col animate-scale-in text-center p-6">
             <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle size={32} />
