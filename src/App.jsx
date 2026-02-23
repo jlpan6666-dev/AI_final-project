@@ -1,17 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
-import { Heart, ExternalLink, Plus, Trophy, Users, Monitor, Info, X, Link as LinkIcon, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Heart, ExternalLink, Plus, Trophy, Users, Monitor, Info, X, Link as LinkIcon, AlertCircle, CheckCircle2, Clock, LogIn, LogOut } from 'lucide-react';
 
 // ==========================================
-// Firebase 初始化設定 (嚴格遵循系統規範)
+// Firebase 初始化設定 (使用你的專屬 Config)
 // ==========================================
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const firebaseConfig = {
+  apiKey: "AIzaSyCh2PByMUxJCY3cmg36WvTE_3PXOyCxNBY",
+  authDomain: "ai-final-project-a69b4.firebaseapp.com",
+  projectId: "ai-final-project-a69b4",
+  storageBucket: "ai-final-project-a69b4.firebasestorage.app",
+  messagingSenderId: "1011815467681",
+  appId: "1:1011815467681:web:fb282cdaf87a0ab385bee0",
+  measurementId: "G-PJRKHDNJDG"
+};
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const provider = new GoogleAuthProvider();
+const appId = "ai-final-project-a69b4";
 
 export default function App() {
   // --- 狀態管理 ---
@@ -34,29 +43,34 @@ export default function App() {
 
   // --- Firebase 驗證與資料監聽 ---
   useEffect(() => {
-    // 1. 初始化 Auth (先執行驗證)
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("認證失敗:", error);
-        showToast("系統認證失敗，請重整頁面", "error");
-      }
-    };
-    
-    initAuth();
-
-    // 監聽 Auth 狀態
+    // 監聽 Auth 狀態 (改為 Google 登入，不需要自動匿名登入)
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
 
     return () => unsubscribeAuth();
   }, []);
+
+  // Google 登入功能
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithPopup(auth, provider);
+      showToast("登入成功！", "success");
+    } catch (error) {
+      console.error("登入失敗:", error);
+      showToast("登入失敗，請重試", "error");
+    }
+  };
+
+  // 登出功能
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      showToast("已登出", "success");
+    } catch (error) {
+      console.error("登出失敗:", error);
+    }
+  };
 
   useEffect(() => {
     // 2. 只有在取得 user 後才查詢 Firestore (遵守 Auth Before Queries 規則)
@@ -132,7 +146,10 @@ export default function App() {
   };
 
   const toggleLike = async (projectId, currentLikedBy) => {
-    if (!user) return;
+    if (!user) {
+      showToast("請先登入才能按讚哦！", "error");
+      return;
+    }
     
     const projectRef = doc(db, 'artifacts', appId, 'public', 'data', 'ai_projects', projectId);
     const isLiked = currentLikedBy.includes(user.uid);
@@ -203,15 +220,39 @@ export default function App() {
               </div>
             </div>
 
-            {/* 新增專案按鈕 */}
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
-            >
-              <Plus size={20} />
-              <span className="hidden sm:inline">上傳專題</span>
-              <span className="sm:hidden">上傳</span>
-            </button>
+            {/* 登入 / 登出與使用者狀態 */}
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
+                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.email}&background=random`} alt="avatar" className="w-6 h-6 rounded-full" />
+                  <span className="truncate max-w-[100px]">{user.displayName || '使用者'}</span>
+                </div>
+                {/* 新增專案按鈕 */}
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
+                >
+                  <Plus size={20} />
+                  <span className="hidden sm:inline">上傳專題</span>
+                  <span className="sm:hidden">上傳</span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center justify-center gap-2 bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-xl font-medium transition-all shadow-sm flex-shrink-0"
+                  title="登出"
+                >
+                  <LogOut size={20} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGoogleLogin}
+                className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
+              >
+                <LogIn size={20} />
+                <span>Google 登入</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -241,11 +282,11 @@ export default function App() {
             <h3 className="text-xl font-bold text-slate-700 mb-2">目前還沒有組別上傳專題</h3>
             <p className="text-slate-500 mb-6">成為第一個展示你們 AI 網站的組別吧！</p>
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => user ? setIsModalOpen(true) : handleGoogleLogin()}
               className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-6 py-3 rounded-xl font-semibold transition-colors"
             >
-              <Plus size={20} />
-              立即上傳
+              {user ? <Plus size={20} /> : <LogIn size={20} />}
+              {user ? '立即上傳' : '登入以上傳'}
             </button>
           </div>
         ) : (
