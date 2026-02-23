@@ -524,7 +524,7 @@ export default function App() {
                     </p>
 
                     <div className="bg-slate-50 rounded-lg p-3 mb-6">
-                      <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">小組成員</div>
+                      <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">組員學號(含組長)</div>
                       <div className="text-sm text-slate-700 font-medium">{project.members}</div>
                     </div>
                   </div>
