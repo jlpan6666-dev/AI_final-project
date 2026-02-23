@@ -611,7 +611,7 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                      小組成員 <span className="text-rose-500">*</span>
+                      組員學號(含組員) <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
