@@ -411,7 +411,7 @@ export default function App() {
                   className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
                 >
                   <LogIn size={20} />
-                  <span>Google 登入</span>
+                  <span>上傳者請登入Google帳號</span>
                 </button>
               </div>
             )}
