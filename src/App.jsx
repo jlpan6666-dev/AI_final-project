@@ -1,0 +1,473 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
+import { Heart, ExternalLink, Plus, Trophy, Users, Monitor, Info, X, Link as LinkIcon, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+
+// ==========================================
+// Firebase 初始化設定 (嚴格遵循系統規範)
+// ==========================================
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+export default function App() {
+  // --- 狀態管理 ---
+  const [user, setUser] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [sortBy, setSortBy] = useState('likes'); // 'likes' 或 'newest'
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // 表單狀態
+  const [formData, setFormData] = useState({
+    systemName: '',
+    groupName: '',
+    members: '',
+    description: '',
+    url: ''
+  });
+
+  // --- Firebase 驗證與資料監聽 ---
+  useEffect(() => {
+    // 1. 初始化 Auth (先執行驗證)
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("認證失敗:", error);
+        showToast("系統認證失敗，請重整頁面", "error");
+      }
+    };
+    
+    initAuth();
+
+    // 監聽 Auth 狀態
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    // 2. 只有在取得 user 後才查詢 Firestore (遵守 Auth Before Queries 規則)
+    if (!user) return;
+
+    // 嚴格使用公共資料路徑
+    const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
+    
+    const unsubscribeDB = onSnapshot(
+      projectsRef,
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setProjects(data);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("讀取專案失敗:", error);
+        showToast("無法載入專案資料", "error");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribeDB();
+  }, [user]);
+
+  // --- 功能邏輯 ---
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) {
+      showToast("系統尚未準備好，請稍候", "error");
+      return;
+    }
+
+    // 簡單的 URL 驗證
+    if (!formData.url.startsWith('http://') && !formData.url.startsWith('https://')) {
+      showToast("請輸入完整的網址 (包含 http:// 或 https://)", "error");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
+      await addDoc(projectsRef, {
+        ...formData,
+        likedBy: [], // 儲存按讚使用者的 UID 陣列
+        createdAt: serverTimestamp(),
+        authorUid: user.uid
+      });
+      
+      showToast("專案上傳成功！ 🎉");
+      setIsModalOpen(false);
+      setFormData({ systemName: '', groupName: '', members: '', description: '', url: '' });
+    } catch (error) {
+      console.error("新增失敗:", error);
+      showToast("上傳失敗，請稍後再試", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleLike = async (projectId, currentLikedBy) => {
+    if (!user) return;
+    
+    const projectRef = doc(db, 'artifacts', appId, 'public', 'data', 'ai_projects', projectId);
+    const isLiked = currentLikedBy.includes(user.uid);
+
+    try {
+      if (isLiked) {
+        // 收回讚
+        await updateDoc(projectRef, {
+          likedBy: arrayRemove(user.uid)
+        });
+      } else {
+        // 按讚
+        await updateDoc(projectRef, {
+          likedBy: arrayUnion(user.uid)
+        });
+      }
+    } catch (error) {
+      console.error("按讚操作失敗:", error);
+      showToast("操作失敗，請確認網路連線", "error");
+    }
+  };
+
+  // --- 資料排序 (在客戶端記憶體中進行，遵守 No Complex Queries 規則) ---
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      if (sortBy === 'likes') {
+        const likesA = a.likedBy?.length || 0;
+        const likesB = b.likedBy?.length || 0;
+        if (likesA !== likesB) {
+          return likesB - likesA; // 愛心多的在前面
+        }
+        // 愛心數相同時，依建立時間排序 (新的在前)
+        return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
+      } else {
+        // 依最新建立時間排序
+        return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
+      }
+    });
+  }, [projects, sortBy]);
+
+  // --- UI 元件 ---
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-12">
+      {/* 頂部導覽列 */}
+      <header className="bg-white shadow-sm sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3 text-indigo-600">
+            <Trophy size={32} className="stroke-[2.5]" />
+            <h1 className="text-2xl font-bold tracking-tight">AI 專題排行榜</h1>
+          </div>
+          
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            {/* 排序選擇器 */}
+            <div className="relative flex-grow sm:flex-grow-0">
+              <select 
+                value={sortBy} 
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full appearance-none bg-slate-100 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors"
+              >
+                <option value="likes">🔥 依喜愛程度</option>
+                <option value="newest">✨ 最新上傳</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20">
+                  <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* 新增專案按鈕 */}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
+            >
+              <Plus size={20} />
+              <span className="hidden sm:inline">上傳專題</span>
+              <span className="sm:hidden">上傳</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* 提示訊息 (Toast) */}
+      {toast && (
+        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in-down">
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-full shadow-lg text-sm font-medium ${
+            toast.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200'
+          }`}>
+            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            {toast.message}
+          </div>
+        </div>
+      )}
+
+      {/* 主要內容區塊 */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+            <p className="text-slate-500 font-medium">載入專題中，請稍候...</p>
+          </div>
+        ) : sortedProjects.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-slate-100">
+            <Monitor size={48} className="mx-auto text-slate-300 mb-4" />
+            <h3 className="text-xl font-bold text-slate-700 mb-2">目前還沒有組別上傳專題</h3>
+            <p className="text-slate-500 mb-6">成為第一個展示你們 AI 網站的組別吧！</p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-6 py-3 rounded-xl font-semibold transition-colors"
+            >
+              <Plus size={20} />
+              立即上傳
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sortedProjects.map((project, index) => {
+              const likesCount = project.likedBy?.length || 0;
+              const isLikedByMe = user && project.likedBy?.includes(user.uid);
+              const rank = index + 1;
+
+              return (
+                <div key={project.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col border border-slate-100 relative group">
+                  
+                  {/* 排行榜名次標籤 (僅在依喜愛程度排序時顯示前三名) */}
+                  {sortBy === 'likes' && rank <= 3 && (
+                    <div className="absolute top-0 left-0 bg-gradient-to-br from-amber-400 to-orange-500 text-white w-12 h-12 flex items-center justify-center font-bold text-lg rounded-br-2xl shadow-md z-10">
+                      #{rank}
+                    </div>
+                  )}
+
+                  <div className="p-6 flex-grow flex flex-col">
+                    <div className={`mb-4 ${sortBy === 'likes' && rank <= 3 ? 'ml-8' : ''}`}>
+                      <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.systemName}>
+                        {project.systemName}
+                      </h2>
+                      <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-1">
+                        <Users size={16} />
+                        <span>{project.groupName}</span>
+                      </div>
+                    </div>
+
+                    <p className="text-slate-600 text-sm mb-4 line-clamp-3 flex-grow" title={project.description}>
+                      {project.description}
+                    </p>
+
+                    <div className="bg-slate-50 rounded-lg p-3 mb-6">
+                      <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">小組成員</div>
+                      <div className="text-sm text-slate-700 font-medium">{project.members}</div>
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
+                    {/* 按讚按鈕 */}
+                    <button 
+                      onClick={() => toggleLike(project.id, project.likedBy || [])}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                        isLikedByMe 
+                          ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' 
+                          : 'bg-white text-slate-500 hover:bg-slate-100 hover:text-rose-500 border border-slate-200 shadow-sm'
+                      }`}
+                    >
+                      <Heart size={18} className={isLikedByMe ? "fill-rose-500" : ""} />
+                      <span className="font-bold">{likesCount}</span>
+                    </button>
+
+                    {/* 連結按鈕 */}
+                    <a 
+                      href={project.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors"
+                    >
+                      <span>前往網站</span>
+                      <ExternalLink size={16} />
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
+
+      {/* 新增專案 Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Monitor size={24} className="text-indigo-600" />
+                發布 AI 網頁專題
+              </h2>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              <form id="projectForm" onSubmit={handleSubmit} className="space-y-5">
+                
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                    系統名稱 <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="systemName"
+                    required
+                    value={formData.systemName}
+                    onChange={handleInputChange}
+                    placeholder="例如：智慧校園導覽機器人"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                      組別名稱 <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="groupName"
+                      required
+                      value={formData.groupName}
+                      onChange={handleInputChange}
+                      placeholder="例如：第 1 組"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                      小組成員 <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="members"
+                      required
+                      value={formData.members}
+                      onChange={handleInputChange}
+                      placeholder="王大明, 李小華..."
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                    網頁功能說明 <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    name="description"
+                    required
+                    rows="3"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    placeholder="簡短描述你們的 AI 網站提供了什麼服務或功能..."
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none resize-none"
+                  ></textarea>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                    網站連結 (URL) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <LinkIcon size={18} />
+                    </div>
+                    <input
+                      type="url"
+                      name="url"
+                      required
+                      value={formData.url}
+                      onChange={handleInputChange}
+                      placeholder="https://your-ai-website.com"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+              </form>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+                disabled={isSubmitting}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                form="projectForm"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-70 flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    發布中...
+                  </>
+                ) : (
+                  '確認發布'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 簡單的自訂 CSS 動畫補充 Tailwind */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translate(-50%, -20px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in-down {
+          animation: fadeInDown 0.3s ease-out forwards;
+        }
+        .animate-scale-in {
+          animation: scaleIn 0.2s ease-out forwards;
+        }
+      `}} />
+    </div>
+  );
+}
