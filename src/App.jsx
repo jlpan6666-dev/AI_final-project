@@ -206,7 +206,8 @@ export default function App() {
       showToast("專題已成功刪除", "success");
     } catch (error) {
       console.error("刪除失敗:", error);
-      showToast("刪除失敗，請檢查權限", "error");
+      // 更新錯誤提示，提醒管理員若遇到權限問題需修改 Firebase Rules
+      showToast("刪除失敗，請至 Firebase 後台更新 Rules 權限", "error");
     } finally {
       setDeleteConfirmId(null);
     }
