@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
-import { Heart, ExternalLink, Plus, Trophy, Users, Monitor, Info, X, Link as LinkIcon, AlertCircle, CheckCircle2, Clock, LogIn, LogOut } from 'lucide-react';
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
+import { Heart, ExternalLink, Plus, Trophy, Users, Monitor, Info, X, Link as LinkIcon, AlertCircle, CheckCircle2, Clock, LogIn, LogOut, Edit, Trash2, Shield, Lock } from 'lucide-react';
 
 // ==========================================
 // Firebase 初始化設定 (使用你的專屬 Config)
@@ -32,6 +32,13 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [cssLoaded, setCssLoaded] = useState(false); // 新增：追蹤 CSS 是否載入完成
+
+  // 權限與管理狀態
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [adminPwdInput, setAdminPwdInput] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   // 表單狀態
   const [formData, setFormData] = useState({
@@ -85,6 +92,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setIsAdmin(false); // 登出時一併清除管理員身分
       showToast("已登出", "success");
     } catch (error) {
       console.error("登出失敗:", error);
@@ -148,10 +156,57 @@ export default function App() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // 管理員登入驗證
+  const handleAdminLoginSubmit = (e) => {
+    e.preventDefault();
+    if (adminPwdInput === 'minar7917') {
+      setIsAdmin(true);
+      setIsAdminModalOpen(false);
+      setAdminPwdInput('');
+      showToast("管理員身分已啟用", "success");
+    } else {
+      showToast("管理員密碼錯誤", "error");
+    }
+  };
+
+  // 開啟編輯視窗
+  const openEditModal = (project) => {
+    setFormData({
+      systemName: project.systemName,
+      groupName: project.groupName,
+      members: project.members,
+      description: project.description,
+      url: project.url
+    });
+    setEditingId(project.id);
+    setIsModalOpen(true);
+  };
+
+  // 關閉新增/編輯視窗
+  const closeProjectModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+    setFormData({ systemName: '', groupName: '', members: '', description: '', url: '' });
+  };
+
+  // 執行刪除專題
+  const executeDelete = async () => {
+    if (!deleteConfirmId) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'ai_projects', deleteConfirmId));
+      showToast("專題已成功刪除", "success");
+    } catch (error) {
+      console.error("刪除失敗:", error);
+      showToast("刪除失敗，請檢查權限", "error");
+    } finally {
+      setDeleteConfirmId(null);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user) {
-      showToast("請先登入才能上傳專題", "error");
+    if (!user && !isAdmin) {
+      showToast("請先登入才能操作專題", "error");
       return;
     }
 
@@ -162,20 +217,33 @@ export default function App() {
 
     setIsSubmitting(true);
     try {
-      const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
-      await addDoc(projectsRef, {
-        ...formData,
-        likedBy: [], 
-        createdAt: serverTimestamp(),
-        authorUid: user.uid
-      });
+      if (editingId) {
+        // 更新現有專題
+        const projectRef = doc(db, 'artifacts', appId, 'public', 'data', 'ai_projects', editingId);
+        await updateDoc(projectRef, {
+          systemName: formData.systemName,
+          groupName: formData.groupName,
+          members: formData.members,
+          description: formData.description,
+          url: formData.url
+        });
+        showToast("專案更新成功！ 🎉");
+      } else {
+        // 新增專題
+        const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
+        await addDoc(projectsRef, {
+          ...formData,
+          likedBy: [], 
+          createdAt: serverTimestamp(),
+          authorUid: user?.uid || 'admin'
+        });
+        showToast("專案上傳成功！ 🎉");
+      }
       
-      showToast("專案上傳成功！ 🎉");
-      setIsModalOpen(false);
-      setFormData({ systemName: '', groupName: '', members: '', description: '', url: '' });
+      closeProjectModal();
     } catch (error) {
-      console.error("新增失敗:", error);
-      showToast("上傳失敗，請稍後再試", "error");
+      console.error("儲存失敗:", error);
+      showToast("儲存失敗，請稍後再試", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -282,11 +350,15 @@ export default function App() {
             </div>
 
             {/* 登入 / 登出與使用者狀態 */}
-            {user ? (
+            {user || isAdmin ? (
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
-                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.email}&background=random`} alt="avatar" className="w-6 h-6 rounded-full" />
-                  <span className="truncate max-w-[100px]">{user.displayName || '使用者'}</span>
+                  {isAdmin ? (
+                    <Shield size={16} className="text-indigo-600" />
+                  ) : (
+                    <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.email}&background=random`} alt="avatar" className="w-6 h-6 rounded-full" />
+                  )}
+                  <span className="truncate max-w-[100px]">{isAdmin ? '管理員' : (user?.displayName || '使用者')}</span>
                 </div>
                 {/* 新增專案按鈕 */}
                 <button
@@ -306,13 +378,22 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={handleGoogleLogin}
-                className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
-              >
-                <LogIn size={20} />
-                <span>Google 登入</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsAdminModalOpen(true)}
+                  className="flex items-center justify-center gap-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 px-3 py-2 rounded-xl font-medium transition-all flex-shrink-0"
+                  title="管理員登入"
+                >
+                  <Shield size={18} />
+                </button>
+                <button
+                  onClick={handleGoogleLogin}
+                  className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
+                >
+                  <LogIn size={20} />
+                  <span>Google 登入</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -343,11 +424,11 @@ export default function App() {
             <h3 className="text-xl font-bold text-slate-700 mb-2">目前還沒有組別上傳專題</h3>
             <p className="text-slate-500 mb-6">成為第一個展示你們 AI 網站的組別吧！</p>
             <button
-              onClick={() => user ? setIsModalOpen(true) : handleGoogleLogin()}
+              onClick={() => (user || isAdmin) ? setIsModalOpen(true) : handleGoogleLogin()}
               className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-6 py-3 rounded-xl font-semibold transition-colors"
             >
-              {user ? <Plus size={20} /> : <LogIn size={20} />}
-              {user ? '立即上傳' : '登入以上傳'}
+              {(user || isAdmin) ? <Plus size={20} /> : <LogIn size={20} />}
+              {(user || isAdmin) ? '立即上傳' : '登入以上傳'}
             </button>
           </div>
         ) : (
@@ -356,6 +437,7 @@ export default function App() {
               const likesCount = project.likedBy?.length || 0;
               const isLikedByMe = user && project.likedBy?.includes(user.uid);
               const rank = index + 1;
+              const canEdit = isAdmin || (user && project.authorUid === user.uid);
 
               // 擷取網址的網域 (Domain) 來取得網站 Icon
               let domain = '';
@@ -375,8 +457,28 @@ export default function App() {
                     </div>
                   )}
 
+                  {/* 編輯 / 刪除按鈕 (僅作者或管理員可見) */}
+                  {canEdit && (
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <button 
+                        onClick={() => openEditModal(project)} 
+                        className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 rounded-lg shadow-sm transition-all"
+                        title="編輯專題"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button 
+                        onClick={() => setDeleteConfirmId(project.id)} 
+                        className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 rounded-lg shadow-sm transition-all"
+                        title="刪除專題"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="p-6 flex-grow flex flex-col">
-                    <div className={`mb-4 ${sortBy === 'likes' && rank <= 3 ? 'ml-8' : ''}`}>
+                    <div className={`mb-4 ${(sortBy === 'likes' && rank <= 3) || canEdit ? 'pr-16' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-8' : ''}`}>
                       <div className="flex items-center gap-3">
                         {/* 網站 Icon (Favicon) */}
                         {domain && (
@@ -443,11 +545,11 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
               <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Monitor size={24} className="text-indigo-600" />
-                發布 AI 網頁專題
+                {editingId ? <Edit size={24} className="text-indigo-600" /> : <Monitor size={24} className="text-indigo-600" />}
+                {editingId ? '編輯 AI 網頁專題' : '發布 AI 網頁專題'}
               </h2>
               <button 
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeProjectModal}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
               >
                 <X size={24} />
@@ -544,7 +646,7 @@ export default function App() {
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeProjectModal}
                 className="px-5 py-2.5 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-colors"
                 disabled={isSubmitting}
               >
@@ -559,11 +661,82 @@ export default function App() {
                 {isSubmitting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    發布中...
+                    {editingId ? '儲存中...' : '發布中...'}
                   </>
                 ) : (
-                  '確認發布'
+                  editingId ? '儲存修改' : '確認發布'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 管理員登入 Modal */}
+      {isAdminModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col animate-scale-in">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Shield size={24} className="text-indigo-600" />
+                管理員登入
+              </h2>
+              <button 
+                onClick={() => { setIsAdminModalOpen(false); setAdminPwdInput(''); }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                    <Lock size={16} /> 管理密碼
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    value={adminPwdInput}
+                    onChange={(e) => setAdminPwdInput(e.target.value)}
+                    placeholder="請輸入密碼"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full px-5 py-2.5 mt-2 rounded-xl font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+                >
+                  確認登入
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 刪除確認 Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col animate-scale-in text-center p-6">
+            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle size={32} />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">確定要刪除這個專題嗎？</h2>
+            <p className="text-slate-500 mb-6 text-sm">這個動作無法復原，與該專題相關的所有愛心與紀錄都會被永久刪除。</p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-5 py-2.5 rounded-xl font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors flex-1"
+              >
+                取消
+              </button>
+              <button
+                onClick={executeDelete}
+                className="px-5 py-2.5 rounded-xl font-medium bg-rose-600 hover:bg-rose-700 text-white transition-colors flex-1"
+              >
+                確認刪除
               </button>
             </div>
           </div>
