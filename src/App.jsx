@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
 import { Heart, ExternalLink, Plus, Trophy, Users, Monitor, Info, X, Link as LinkIcon, AlertCircle, CheckCircle2, Clock, LogIn, LogOut, Edit, Trash2, Shield, Lock } from 'lucide-react';
 
@@ -69,9 +69,18 @@ export default function App() {
 
   // --- Firebase 驗證與資料監聽 ---
   useEffect(() => {
-    // 監聽 Auth 狀態 (Google 登入)
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    // 監聽 Auth 狀態 (支援 Google 登入與自動匿名登入)
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+      } else {
+        try {
+          // 如果沒有登入 Google，系統自動配發一個匿名設備帳號來記錄愛心
+          await signInAnonymously(auth);
+        } catch (error) {
+          console.error("匿名登入失敗:", error);
+        }
+      }
     });
 
     return () => unsubscribeAuth();
@@ -203,10 +212,14 @@ export default function App() {
     }
   };
 
+  // --- 權限判斷變數 ---
+  const isRealUser = user && !user.isAnonymous; // 確認是否為真實 Google 登入的帳號
+  const canUpload = isRealUser || isAdmin;      // 只有真實帳號或管理員可以上傳與編輯
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user && !isAdmin) {
-      showToast("請先登入才能操作專題", "error");
+    if (!canUpload) {
+      showToast("請先使用 Google 登入才能操作專題", "error");
       return;
     }
 
@@ -250,13 +263,20 @@ export default function App() {
   };
 
   const toggleLike = async (projectId, currentLikedBy) => {
-    if (!user) {
-      showToast("請先登入才能按讚哦！", "error");
-      return;
-    }
+    if (!user) return; // 系統載入中防護
     
-    const projectRef = doc(db, 'artifacts', appId, 'public', 'data', 'ai_projects', projectId);
     const isLiked = currentLikedBy.includes(user.uid);
+
+    // 匿名使用者限制檢查：最多 2 個專案
+    if (!isLiked && user.isAnonymous) {
+      const likedCount = projects.filter(p => p.likedBy?.includes(user.uid)).length;
+      if (likedCount >= 2) {
+        showToast("匿名狀態最多只能按讚 2 個專題喔！請登入以解除限制。", "error");
+        return;
+      }
+    }
+
+    const projectRef = doc(db, 'artifacts', appId, 'public', 'data', 'ai_projects', projectId);
 
     try {
       if (isLiked) {
@@ -350,7 +370,7 @@ export default function App() {
             </div>
 
             {/* 登入 / 登出與使用者狀態 */}
-            {user || isAdmin ? (
+            {canUpload ? (
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
                   {isAdmin ? (
@@ -424,11 +444,11 @@ export default function App() {
             <h3 className="text-xl font-bold text-slate-700 mb-2">目前還沒有組別上傳專題</h3>
             <p className="text-slate-500 mb-6">成為第一個展示你們 AI 網站的組別吧！</p>
             <button
-              onClick={() => (user || isAdmin) ? setIsModalOpen(true) : handleGoogleLogin()}
+              onClick={() => canUpload ? setIsModalOpen(true) : handleGoogleLogin()}
               className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-6 py-3 rounded-xl font-semibold transition-colors"
             >
-              {(user || isAdmin) ? <Plus size={20} /> : <LogIn size={20} />}
-              {(user || isAdmin) ? '立即上傳' : '登入以上傳'}
+              {canUpload ? <Plus size={20} /> : <LogIn size={20} />}
+              {canUpload ? '立即上傳' : '登入以上傳'}
             </button>
           </div>
         ) : (
@@ -437,7 +457,7 @@ export default function App() {
               const likesCount = project.likedBy?.length || 0;
               const isLikedByMe = user && project.likedBy?.includes(user.uid);
               const rank = index + 1;
-              const canEdit = isAdmin || (user && project.authorUid === user.uid);
+              const canEdit = isAdmin || (isRealUser && project.authorUid === user.uid);
 
               // 擷取網址的網域 (Domain) 來取得網站 Icon
               let domain = '';
