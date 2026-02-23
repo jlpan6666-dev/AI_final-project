@@ -41,9 +41,21 @@ export default function App() {
     url: ''
   });
 
+  // ==========================================
+  // 動態載入 Tailwind CSS (解決沒有樣式的問題)
+  // ==========================================
+  useEffect(() => {
+    if (!document.getElementById('tailwind-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn';
+      script.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(script);
+    }
+  }, []);
+
   // --- Firebase 驗證與資料監聽 ---
   useEffect(() => {
-    // 監聽 Auth 狀態 (改為 Google 登入，不需要自動匿名登入)
+    // 監聽 Auth 狀態 (Google 登入)
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
@@ -73,12 +85,30 @@ export default function App() {
   };
 
   useEffect(() => {
-    // 2. 只有在取得 user 後才查詢 Firestore (遵守 Auth Before Queries 規則)
-    if (!user) return;
+    // 只有在取得 user 狀態後才查詢 Firestore
+    if (!user) {
+      // 若未登入，依然可以讀取公開的專案資料
+      const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
+      const unsubscribeDB = onSnapshot(
+        projectsRef,
+        (snapshot) => {
+          const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setProjects(data);
+          setLoading(false);
+        },
+        (error) => {
+          console.error("讀取專案失敗:", error);
+          setLoading(false);
+        }
+      );
+      return () => unsubscribeDB();
+    }
 
-    // 嚴格使用公共資料路徑
+    // 登入狀態下讀取資料
     const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
-    
     const unsubscribeDB = onSnapshot(
       projectsRef,
       (snapshot) => {
@@ -114,11 +144,10 @@ export default function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) {
-      showToast("系統尚未準備好，請稍候", "error");
+      showToast("請先登入才能上傳專題", "error");
       return;
     }
 
-    // 簡單的 URL 驗證
     if (!formData.url.startsWith('http://') && !formData.url.startsWith('https://')) {
       showToast("請輸入完整的網址 (包含 http:// 或 https://)", "error");
       return;
@@ -129,7 +158,7 @@ export default function App() {
       const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'ai_projects');
       await addDoc(projectsRef, {
         ...formData,
-        likedBy: [], // 儲存按讚使用者的 UID 陣列
+        likedBy: [], 
         createdAt: serverTimestamp(),
         authorUid: user.uid
       });
@@ -156,12 +185,10 @@ export default function App() {
 
     try {
       if (isLiked) {
-        // 收回讚
         await updateDoc(projectRef, {
           likedBy: arrayRemove(user.uid)
         });
       } else {
-        // 按讚
         await updateDoc(projectRef, {
           likedBy: arrayUnion(user.uid)
         });
@@ -172,19 +199,15 @@ export default function App() {
     }
   };
 
-  // --- 資料排序 (在客戶端記憶體中進行，遵守 No Complex Queries 規則) ---
+  // --- 資料排序 ---
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => {
       if (sortBy === 'likes') {
         const likesA = a.likedBy?.length || 0;
         const likesB = b.likedBy?.length || 0;
-        if (likesA !== likesB) {
-          return likesB - likesA; // 愛心多的在前面
-        }
-        // 愛心數相同時，依建立時間排序 (新的在前)
+        if (likesA !== likesB) return likesB - likesA; 
         return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
       } else {
-        // 依最新建立時間排序
         return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
       }
     });
@@ -194,6 +217,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-12">
+      {/* 直接寫入自訂 CSS 動畫樣式 */}
+      <style>{`
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translate(-50%, -20px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in-down {
+          animation: fadeInDown 0.3s ease-out forwards;
+        }
+        .animate-scale-in {
+          animation: scaleIn 0.2s ease-out forwards;
+        }
+      `}</style>
+
       {/* 頂部導覽列 */}
       <header className="bg-white shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -202,7 +243,7 @@ export default function App() {
             <h1 className="text-2xl font-bold tracking-tight">AI 專題排行榜</h1>
           </div>
           
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center justify-center gap-3 w-full sm:w-auto">
             {/* 排序選擇器 */}
             <div className="relative flex-grow sm:flex-grow-0">
               <select 
@@ -299,7 +340,7 @@ export default function App() {
               return (
                 <div key={project.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col border border-slate-100 relative group">
                   
-                  {/* 排行榜名次標籤 (僅在依喜愛程度排序時顯示前三名) */}
+                  {/* 排行榜名次標籤 */}
                   {sortBy === 'likes' && rank <= 3 && (
                     <div className="absolute top-0 left-0 bg-gradient-to-br from-amber-400 to-orange-500 text-white w-12 h-12 flex items-center justify-center font-bold text-lg rounded-br-2xl shadow-md z-10">
                       #{rank}
@@ -328,7 +369,6 @@ export default function App() {
                   </div>
 
                   <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
-                    {/* 按讚按鈕 */}
                     <button 
                       onClick={() => toggleLike(project.id, project.likedBy || [])}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
@@ -341,7 +381,6 @@ export default function App() {
                       <span className="font-bold">{likesCount}</span>
                     </button>
 
-                    {/* 連結按鈕 */}
                     <a 
                       href={project.url} 
                       target="_blank" 
@@ -491,24 +530,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* 簡單的自訂 CSS 動畫補充 Tailwind */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes fadeInDown {
-          from { opacity: 0; transform: translate(-50%, -20px); }
-          to { opacity: 1; transform: translate(-50%, 0); }
-        }
-        @keyframes scaleIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        .animate-fade-in-down {
-          animation: fadeInDown 0.3s ease-out forwards;
-        }
-        .animate-scale-in {
-          animation: scaleIn 0.2s ease-out forwards;
-        }
-      `}} />
     </div>
   );
 }
