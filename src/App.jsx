@@ -511,22 +511,22 @@ export default function App() {
                     <div className="p-4 sm:p-6 flex-grow flex flex-col">
                       {/* 這裡加大了 ml-10 sm:ml-12 以及上方微調 mt-1，確保完美閃避左上角排行榜標籤 */}
                       <div className={`mb-4 ${canEdit ? 'pr-14' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-10 sm:ml-12 mt-1 sm:mt-0' : ''}`}>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-start gap-3">
                           {/* 網站 Icon (Favicon) */}
                           {domain && (
                             <img 
                               src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} 
                               alt="Site icon" 
-                              className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm"
+                              className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm mt-0.5"
                               onError={(e) => { e.target.style.display = 'none'; }} // 若圖片載入失敗則隱藏
                             />
                           )}
-                          {/* 將原本的 SystemName 換成 Members */}
-                          <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.members}>
+                          {/* 將原本的 SystemName 換成 Members，並處理過長學號強制換行 */}
+                          <h2 className="text-xl font-bold text-slate-800 line-clamp-2 break-all sm:break-words group-hover:text-indigo-600 transition-colors" title={project.members}>
                             {project.members}
                           </h2>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-1">
+                        <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-2">
                           <Users size={16} />
                           <span>{project.groupName}</span>
                         </div>
@@ -629,7 +629,7 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                      小組成員 <span className="text-rose-500">*</span>
+                      小組成員(學號) <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
