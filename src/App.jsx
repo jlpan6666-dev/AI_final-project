@@ -509,7 +509,8 @@ export default function App() {
                     )}
 
                     <div className="p-4 sm:p-6 flex-grow flex flex-col">
-                      <div className={`mb-4 ${(sortBy === 'likes' && rank <= 3) || canEdit ? 'pr-16' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-6 sm:ml-8' : ''}`}>
+                      {/* 這裡加大了 ml-10 sm:ml-12 以及上方微調 mt-1，確保完美閃避左上角排行榜標籤 */}
+                      <div className={`mb-4 ${canEdit ? 'pr-14' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-10 sm:ml-12 mt-1 sm:mt-0' : ''}`}>
                         <div className="flex items-center gap-3">
                           {/* 網站 Icon (Favicon) */}
                           {domain && (
