@@ -206,7 +206,6 @@ export default function App() {
       showToast("專題已成功刪除", "success");
     } catch (error) {
       console.error("刪除失敗:", error);
-      // 更新錯誤提示，提醒管理員若遇到權限問題需修改 Firebase Rules
       showToast("刪除失敗，請至 Firebase 後台更新 Rules 權限", "error");
     } finally {
       setDeleteConfirmId(null);
@@ -353,45 +352,28 @@ export default function App() {
 
       {/* 頂部導覽列 */}
       <header className="bg-white shadow-sm sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3 text-indigo-600">
-            <Trophy size={32} className="stroke-[2.5]" />
-            <h1 className="text-2xl font-bold tracking-tight">AI 專題排行榜</h1>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 text-indigo-600 w-full sm:w-auto justify-center sm:justify-start">
+            <Trophy className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.5]" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">AI 專題排行榜</h1>
           </div>
           
-          <div className="flex flex-wrap items-center justify-center gap-3 w-full sm:w-auto">
-            {/* 排序選擇器 */}
-            <div className="relative flex-grow sm:flex-grow-0">
-              <select 
-                value={sortBy} 
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full appearance-none bg-slate-100 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors"
-              >
-                <option value="likes">🔥 依喜愛程度</option>
-                <option value="newest">✨ 最新上傳</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-                <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20">
-                  <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                </svg>
-              </div>
-            </div>
-
-            {/* 登入 / 登出與使用者狀態 */}
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 w-full sm:w-auto">
+            {/* 登入 / 登出與使用者狀態 (排序選單已移至卡片上方) */}
             {canUpload ? (
-              <div className="flex items-center gap-3">
-                <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
+              <div className="flex items-center gap-2 sm:gap-3 flex-grow sm:flex-grow-0 justify-end w-full sm:w-auto">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-full">
                   {isAdmin ? (
                     <Shield size={16} className="text-indigo-600" />
                   ) : (
-                    <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.email}&background=random`} alt="avatar" className="w-6 h-6 rounded-full" />
+                    <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.email}&background=random`} alt="avatar" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full" />
                   )}
-                  <span className="truncate max-w-[100px]">{isAdmin ? '管理員' : (user?.displayName || '使用者')}</span>
+                  <span className="truncate max-w-[80px] sm:max-w-[100px] text-xs sm:text-sm">{isAdmin ? '管理員' : (user?.displayName || '使用者')}</span>
                 </div>
                 {/* 新增專案按鈕 */}
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
+                  className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0 flex-grow sm:flex-grow-0"
                 >
                   <Plus size={20} />
                   <span className="hidden sm:inline">上傳專題</span>
@@ -406,7 +388,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-center">
                 <button
                   onClick={() => setIsAdminModalOpen(true)}
                   className="flex items-center justify-center gap-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 px-3 py-2 rounded-xl font-medium transition-all flex-shrink-0"
@@ -416,7 +398,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={handleGoogleLogin}
-                  className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0"
+                  className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition-all shadow-sm hover:shadow-md flex-shrink-0 flex-grow sm:flex-grow-0"
                 >
                   <LogIn size={20} />
                   <span>上傳者請登入</span>
@@ -429,7 +411,7 @@ export default function App() {
 
       {/* 提示訊息 (Toast) */}
       {toast && (
-        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in-down">
+        <div className="fixed top-20 sm:top-24 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in-down w-max max-w-[90vw]">
           <div className={`flex items-center gap-2 px-4 py-3 rounded-full shadow-lg text-sm font-medium ${
             toast.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200'
           }`}>
@@ -460,111 +442,133 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedProjects.map((project, index) => {
-              const likesCount = project.likedBy?.length || 0;
-              const isLikedByMe = user && project.likedBy?.includes(user.uid);
-              const rank = index + 1;
-              const canEdit = isAdmin || (isRealUser && project.authorUid === user.uid);
-
-              // 擷取網址的網域 (Domain) 來取得網站 Icon
-              let domain = '';
-              try {
-                domain = new URL(project.url).hostname;
-              } catch (e) {
-                console.error("無法解析網址:", project.url);
-              }
-
-              return (
-                <div key={project.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col border border-slate-100 relative group">
-                  
-                  {/* 排行榜名次標籤 */}
-                  {sortBy === 'likes' && rank <= 3 && (
-                    <div className="absolute top-0 left-0 bg-gradient-to-br from-amber-400 to-orange-500 text-white w-12 h-12 flex items-center justify-center font-bold text-lg rounded-br-2xl shadow-md z-10">
-                      #{rank}
-                    </div>
-                  )}
-
-                  {/* 編輯 / 刪除按鈕 (僅作者或管理員可見) */}
-                  {canEdit && (
-                    <div className="absolute top-4 right-4 flex items-center gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <button 
-                        onClick={() => openEditModal(project)} 
-                        className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 rounded-lg shadow-sm transition-all"
-                        title="編輯專題"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button 
-                        onClick={() => setDeleteConfirmId(project.id)} 
-                        className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 rounded-lg shadow-sm transition-all"
-                        title="刪除專題"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="p-6 flex-grow flex flex-col">
-                    <div className={`mb-4 ${(sortBy === 'likes' && rank <= 3) || canEdit ? 'pr-16' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-8' : ''}`}>
-                      <div className="flex items-center gap-3">
-                        {/* 網站 Icon (Favicon) */}
-                        {domain && (
-                          <img 
-                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} 
-                            alt="Site icon" 
-                            className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm"
-                            onError={(e) => { e.target.style.display = 'none'; }} // 若圖片載入失敗則隱藏
-                          />
-                        )}
-                        {/* 將原本的 SystemName 換成 Members */}
-                        <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.members}>
-                          {project.members}
-                        </h2>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-1">
-                        <Users size={16} />
-                        <span>{project.groupName}</span>
-                      </div>
-                    </div>
-
-                    <p className="text-slate-600 text-sm mb-4 line-clamp-3 flex-grow" title={project.description}>
-                      {project.description}
-                    </p>
-
-                    <div className="bg-slate-50 rounded-lg p-3 mb-6">
-                      {/* 將原本的 Members 換成 SystemName */}
-                      <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">題目名稱 (系統名稱)</div>
-                      <div className="text-sm text-slate-700 font-medium">{project.systemName}</div>
-                    </div>
-                  </div>
-
-                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
-                    <button 
-                      onClick={() => toggleLike(project.id, project.likedBy || [])}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
-                        isLikedByMe 
-                          ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' 
-                          : 'bg-white text-slate-500 hover:bg-slate-100 hover:text-rose-500 border border-slate-200 shadow-sm'
-                      }`}
-                    >
-                      <Heart size={18} className={isLikedByMe ? "fill-rose-500" : ""} />
-                      <span className="font-bold">{likesCount}</span>
-                    </button>
-
-                    <a 
-                      href={project.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors"
-                    >
-                      <span>前往網站</span>
-                      <ExternalLink size={16} />
-                    </a>
-                  </div>
+          <div className="space-y-4">
+            {/* 排序選擇器 (縮小並移至此處) */}
+            <div className="flex justify-end">
+              <div className="relative inline-block">
+                <select 
+                  value={sortBy} 
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="appearance-none bg-white border border-slate-200 text-slate-600 text-sm py-1.5 pl-3 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors shadow-sm cursor-pointer hover:bg-slate-50"
+                >
+                  <option value="likes">🔥 依喜愛程度</option>
+                  <option value="newest">✨ 最新上傳</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                  <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 20 20">
+                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                  </svg>
                 </div>
-              );
-            })}
+              </div>
+            </div>
+
+            {/* 專題卡片列表 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {sortedProjects.map((project, index) => {
+                const likesCount = project.likedBy?.length || 0;
+                const isLikedByMe = user && project.likedBy?.includes(user.uid);
+                const rank = index + 1;
+                const canEdit = isAdmin || (isRealUser && project.authorUid === user.uid);
+
+                // 擷取網址的網域 (Domain) 來取得網站 Icon
+                let domain = '';
+                try {
+                  domain = new URL(project.url).hostname;
+                } catch (e) {
+                  console.error("無法解析網址:", project.url);
+                }
+
+                return (
+                  <div key={project.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col border border-slate-100 relative group">
+                    
+                    {/* 排行榜名次標籤 */}
+                    {sortBy === 'likes' && rank <= 3 && (
+                      <div className="absolute top-0 left-0 bg-gradient-to-br from-amber-400 to-orange-500 text-white w-12 h-12 flex items-center justify-center font-bold text-lg rounded-br-2xl shadow-md z-10">
+                        #{rank}
+                      </div>
+                    )}
+
+                    {/* 編輯 / 刪除按鈕 (手機上永遠顯示，電腦上懸浮顯示) */}
+                    {canEdit && (
+                      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-2 z-20 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-200">
+                        <button 
+                          onClick={() => openEditModal(project)} 
+                          className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 rounded-lg shadow-sm transition-all"
+                          title="編輯專題"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button 
+                          onClick={() => setDeleteConfirmId(project.id)} 
+                          className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 rounded-lg shadow-sm transition-all"
+                          title="刪除專題"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="p-4 sm:p-6 flex-grow flex flex-col">
+                      <div className={`mb-4 ${(sortBy === 'likes' && rank <= 3) || canEdit ? 'pr-16' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-6 sm:ml-8' : ''}`}>
+                        <div className="flex items-center gap-3">
+                          {/* 網站 Icon (Favicon) */}
+                          {domain && (
+                            <img 
+                              src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} 
+                              alt="Site icon" 
+                              className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm"
+                              onError={(e) => { e.target.style.display = 'none'; }} // 若圖片載入失敗則隱藏
+                            />
+                          )}
+                          {/* 將原本的 SystemName 換成 Members */}
+                          <h2 className="text-xl font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={project.members}>
+                            {project.members}
+                          </h2>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-1">
+                          <Users size={16} />
+                          <span>{project.groupName}</span>
+                        </div>
+                      </div>
+
+                      <p className="text-slate-600 text-sm mb-4 line-clamp-3 flex-grow" title={project.description}>
+                        {project.description}
+                      </p>
+
+                      <div className="bg-slate-50 rounded-lg p-3 mb-6">
+                        {/* 將原本的 Members 換成 SystemName */}
+                        <div className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">題目名稱 (系統名稱)</div>
+                        <div className="text-sm text-slate-700 font-medium">{project.systemName}</div>
+                      </div>
+                    </div>
+
+                    <div className="px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
+                      <button 
+                        onClick={() => toggleLike(project.id, project.likedBy || [])}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                          isLikedByMe 
+                            ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' 
+                            : 'bg-white text-slate-500 hover:bg-slate-100 hover:text-rose-500 border border-slate-200 shadow-sm'
+                        }`}
+                      >
+                        <Heart size={18} className={isLikedByMe ? "fill-rose-500" : ""} />
+                        <span className="font-bold">{likesCount}</span>
+                      </button>
+
+                      <a 
+                        href={project.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors"
+                      >
+                        <span>前往網站</span>
+                        <ExternalLink size={16} />
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </main>
