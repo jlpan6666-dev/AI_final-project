@@ -576,8 +576,8 @@ export default function App() {
           onClick={(e) => { if (e.target === e.currentTarget) closeProjectModal(); }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
-              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
                 {editingId ? <Edit size={24} className="text-indigo-600" /> : <Monitor size={24} className="text-indigo-600" />}
                 {editingId ? '編輯 AI 網頁專題' : '發布 AI 網頁專題'}
               </h2>
@@ -589,8 +589,8 @@ export default function App() {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto">
-              <form id="projectForm" onSubmit={handleSubmit} className="space-y-5">
+            <div className="p-4 sm:p-6 overflow-y-auto">
+              <form id="projectForm" onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
@@ -676,7 +676,7 @@ export default function App() {
               </form>
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
               <button
                 type="button"
                 onClick={closeProjectModal}
