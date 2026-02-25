@@ -342,6 +342,23 @@ export default function App() {
           from { opacity: 0; transform: scale(0.95); }
           to { opacity: 1; transform: scale(1); }
         }
+        @keyframes marquee {
+          0% { transform: translateX(0%); }
+          100% { transform: translateX(-100%); }
+        }
+        .animate-marquee {
+          display: inline-block;
+          white-space: nowrap;
+          padding-left: 100%;
+          animation: marquee 12s linear infinite;
+        }
+        .pause-on-hover:hover .animate-marquee {
+          animation-play-state: paused;
+        }
+        .marquee-mask {
+          -webkit-mask-image: linear-gradient(to right, transparent, black 10px, black calc(100% - 10px), transparent);
+          mask-image: linear-gradient(to right, transparent, black 10px, black calc(100% - 10px), transparent);
+        }
         .animate-fade-in-down {
           animation: fadeInDown 0.3s ease-out forwards;
         }
@@ -511,20 +528,22 @@ export default function App() {
                     <div className="p-4 sm:p-6 flex-grow flex flex-col">
                       {/* 這裡加大了 ml-10 sm:ml-12 以及上方微調 mt-1，確保完美閃避左上角排行榜標籤 */}
                       <div className={`mb-4 ${canEdit ? 'pr-14' : ''} ${sortBy === 'likes' && rank <= 3 ? 'ml-10 sm:ml-12 mt-1 sm:mt-0' : ''}`}>
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-center gap-3 w-full pause-on-hover">
                           {/* 網站 Icon (Favicon) */}
                           {domain && (
                             <img 
                               src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} 
                               alt="Site icon" 
-                              className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm mt-0.5"
+                              className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm"
                               onError={(e) => { e.target.style.display = 'none'; }} // 若圖片載入失敗則隱藏
                             />
                           )}
-                          {/* 將原本的 SystemName 換成 Members，並處理過長學號強制換行 */}
-                          <h2 className="text-xl font-bold text-slate-800 line-clamp-2 break-all sm:break-words group-hover:text-indigo-600 transition-colors" title={project.members}>
-                            {project.members}
-                          </h2>
+                          {/* 跑馬燈：小組成員(學號) */}
+                          <div className="flex-1 overflow-hidden marquee-mask relative">
+                            <h2 className="text-xl font-bold text-slate-800 group-hover:text-indigo-600 transition-colors animate-marquee" title={project.members}>
+                              {project.members}
+                            </h2>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-2">
                           <Users size={16} />
