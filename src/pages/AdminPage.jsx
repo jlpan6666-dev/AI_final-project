@@ -13,10 +13,12 @@ import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
+import { extractFolderId } from '../lib/drivePicker';
 
 const EMPTY_COURSE = {
   name: '', code: '', deadline: '', allowLate: false,
   fields: { url: true, description: true, file: false },
+  driveFolderId: '',
 };
 
 export default function AdminPage() {
@@ -134,6 +136,7 @@ function CourseManager() {
       deadline: toDatetimeLocalValue(c.deadline),
       allowLate: !!c.allowLate,
       fields: { url: !!c.fields?.url, description: !!c.fields?.description, file: !!c.fields?.file },
+      driveFolderId: c.driveFolderId || '',
     });
     setEditingId(c.id);
     setOpen(true);
@@ -163,6 +166,7 @@ function CourseManager() {
         deadline: form.deadline ? Timestamp.fromDate(new Date(form.deadline)) : null,
         allowLate: form.allowLate,
         fields: form.fields,
+        driveFolderId: form.fields.file ? extractFolderId(form.driveFolderId) : '',
         updatedAt: serverTimestamp(),
       };
 
@@ -301,6 +305,22 @@ function CourseManager() {
               </div>
               <p className="text-xs text-slate-400 mt-1">「題目 / 系統名稱」為必填，固定收集。</p>
             </div>
+
+            {form.fields.file && (
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700">
+                  繳交資料夾 (Google Drive) <span className="text-rose-500">*</span>
+                </label>
+                <input type="text" value={form.driveFolderId}
+                  onChange={(e) => setForm((f) => ({ ...f, driveFolderId: e.target.value }))}
+                  placeholder="貼上 Drive 資料夾連結或 ID" className="ce-input font-mono text-sm" />
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  學生的檔案會直接上傳到這個資料夾。請先在你的 Drive 建立資料夾，並
+                  <b>分享為「知道連結的人 → 編輯者」</b>，否則學生無法上傳。
+                  未填寫的話，學生將無法繳交檔案。
+                </p>
+              </div>
+            )}
           </form>
           <style>{`
             .ce-input { width:100%; padding:0.625rem 1rem; border-radius:0.75rem; border:1px solid #cbd5e1; outline:none; transition:all .15s; }

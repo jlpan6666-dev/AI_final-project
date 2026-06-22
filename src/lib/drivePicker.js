@@ -60,26 +60,34 @@ async function tryShareAnyone(fileId, token) {
   }
 }
 
-// 主流程：解析為使用者挑選/上傳的檔案，或在取消時回傳 null
-export async function pickFromDrive() {
+// 從 Drive 資料夾連結或原始字串中取出資料夾 ID
+export function extractFolderId(input) {
+  if (!input) return '';
+  const s = String(input).trim();
+  const m = s.match(/folders\/([-\w]+)/) || s.match(/[?&]id=([-\w]+)/);
+  if (m) return m[1];
+  return s; // 視為已是資料夾 ID
+}
+
+// 主流程：上傳/挑選檔案「到指定資料夾」，回傳 { id, name, url }；取消回傳 null
+// folderId 為必填（強制繳交到老師指定的資料夾）
+export async function pickFromDrive(folderId) {
+  if (!folderId) throw new Error('NO_FOLDER');
   await ensureLibsLoaded();
   const token = await requestAccessToken();
   const { google } = window;
 
   return new Promise((resolve, reject) => {
     try {
-      const uploadView = new google.picker.DocsUploadView();
-      const browseView = new google.picker.DocsView()
-        .setIncludeFolders(true)
-        .setSelectFolderEnabled(false);
+      // 上傳檢視指定 parent 資料夾，檔案會直接進老師的繳交資料夾
+      const uploadView = new google.picker.DocsUploadView().setParent(folderId);
 
       const picker = new google.picker.PickerBuilder()
         .setOAuthToken(token)
         .setDeveloperKey(DRIVE.apiKey)
         .setAppId(DRIVE.appId)
-        .setTitle('上傳或選擇你的專案檔案')
+        .setTitle('上傳專案檔案到課程繳交資料夾')
         .addView(uploadView)
-        .addView(browseView)
         .setCallback(async (data) => {
           const action = data[google.picker.Response.ACTION];
           if (action === google.picker.Action.PICKED) {

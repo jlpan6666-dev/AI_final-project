@@ -107,18 +107,22 @@ export default function CoursePage() {
     setForm((f) => ({ ...f, [name]: value }));
   };
 
-  // 開啟 Google Drive Picker 上傳/挑選檔案
+  // 開啟 Google Drive Picker，上傳到老師指定的課程資料夾
   const handleDrivePick = async () => {
+    if (!course?.driveFolderId) {
+      showToast('老師尚未設定繳交資料夾，請聯絡老師', 'error');
+      return;
+    }
     setDrivePicking(true);
     try {
-      const file = await pickFromDrive();
+      const file = await pickFromDrive(course.driveFolderId);
       if (file) {
         setForm((f) => ({ ...f, fileUrl: file.url, fileName: file.name }));
-        showToast(`已選擇檔案：${file.name}`, 'success');
+        showToast(`已上傳檔案：${file.name}`, 'success');
       }
     } catch (err) {
-      console.error('Drive 選檔失敗:', err);
-      showToast('Drive 授權或載入失敗，請重試', 'error');
+      console.error('Drive 上傳失敗:', err);
+      showToast('上傳失敗：請確認已登入 Google 並對繳交資料夾有編輯權限', 'error');
     } finally {
       setDrivePicking(false);
     }
@@ -354,7 +358,11 @@ export default function CoursePage() {
 
             {fields.file && (
               <Field label="專案檔案 (Google Drive)" icon={<FileText size={15} />}>
-                {form.fileUrl ? (
+                {!course?.driveFolderId ? (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-2.5">
+                    老師尚未設定繳交資料夾，暫時無法上傳檔案，請聯絡老師。
+                  </div>
+                ) : form.fileUrl ? (
                   <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
                     <a href={form.fileUrl} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-2 text-sm text-emerald-800 font-medium truncate hover:underline">
@@ -376,9 +384,11 @@ export default function CoursePage() {
                       : <><UploadCloud size={18} /> 從 Google Drive 上傳／選擇檔案</>}
                   </button>
                 )}
-                <p className="text-xs text-slate-400 mt-1">
-                  檔案會上傳到你自己的 Google Drive，系統只保存連結並盡力設為「知道連結者可看」。
-                </p>
+                {course?.driveFolderId && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    檔案會上傳到老師指定的課程繳交資料夾；系統保存連結，並盡力設為「知道連結者可看」。
+                  </p>
+                )}
               </Field>
             )}
           </form>
