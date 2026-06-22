@@ -30,6 +30,12 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
+    // 邀請信：super 可讀寫，本人可用自己的 email 讀取和刪除
+    match /invitations/{email} {
+      allow read, write: if isSuper();
+      allow get, delete: if isSignedIn() && request.auth.token.email == email;
+    }
+
     // 管理者名單
     match /admins/{uid} {
       // 自己可讀自己（檢查身分用）；super 可讀全部（管理名單用）
@@ -40,6 +46,11 @@ service cloud.firestore {
         && request.auth.uid == uid
         && request.resource.data.role == 'super'
         && exists(/databases/$(database)/documents/adminClaims/$(uid));
+      // 透過邀請成為 admin
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'admin'
+        && exists(/databases/$(database)/documents/invitations/$(request.auth.token.email));
       // super 可新增/調整/移除其他管理者（含同意升級）
       allow create, update, delete: if isSuper();
     }

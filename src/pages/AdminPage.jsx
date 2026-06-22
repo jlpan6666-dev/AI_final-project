@@ -348,18 +348,27 @@ function AdminManager() {
   const { user, isSuper } = useAuth();
   const showToast = useToast();
   const [admins, setAdmins] = useState([]);
+  const [invitations, setInvitations] = useState([]);
   const [requests, setRequests] = useState([]);
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
   const [requesting, setRequesting] = useState(false);
 
-  // super 才讀取完整管理者名單
+  // super 才讀取完整管理者名單與邀請名單
   useEffect(() => {
     if (!isSuper) return;
-    const unsub = onSnapshot(collection(db, 'admins'), (snap) => {
+    const unsubAdmins = onSnapshot(collection(db, 'admins'), (snap) => {
       setAdmins(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, (e) => console.error(e));
-    return () => unsub();
+    
+    const unsubInvites = onSnapshot(collection(db, 'invitations'), (snap) => {
+      setInvitations(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, (e) => console.error(e));
+
+    return () => {
+      unsubAdmins();
+      unsubInvites();
+    };
   }, [isSuper]);
 
   // 待審核的「升為 super」申請
@@ -378,18 +387,36 @@ function AdminManager() {
     setAdding(true);
     try {
       const snap = await getDocs(query(collection(db, 'users'), where('email', '==', target)));
-      if (snap.empty) {
-        showToast('查無此使用者，請對方先用 Google 登入過一次', 'error');
-        return;
+      if (!snap.empty) {
+        const u = snap.docs[0];
+        // 檢查是否已是 admin
+        const adminDocSnap = await getDoc(doc(db, 'admins', u.id));
+        if (adminDocSnap.exists()) {
+          showToast('此使用者已是管理者', 'error');
+          return;
+        }
+        await setDoc(doc(db, 'admins', u.id), {
+          role: 'admin',
+          email: u.data().email || target,
+          addedBy: user.uid,
+          createdAt: serverTimestamp(),
+        });
+        showToast(`已新增管理者：${target}`, 'success');
+      } else {
+        // 使用者尚未登入過，加到 invitations
+        const invSnap = await getDoc(doc(db, 'invitations', target));
+        if (invSnap.exists()) {
+          showToast('已送出過邀請，等待對方登入', 'error');
+          return;
+        }
+        await setDoc(doc(db, 'invitations', target), {
+          email: target,
+          role: 'admin',
+          addedBy: user.uid,
+          createdAt: serverTimestamp(),
+        });
+        showToast(`已傳送邀請至：${target}，對方首次登入後將自動成為管理者`, 'success');
       }
-      const u = snap.docs[0];
-      await setDoc(doc(db, 'admins', u.id), {
-        role: 'admin',
-        email: u.data().email || target,
-        addedBy: user.uid,
-        createdAt: serverTimestamp(),
-      });
-      showToast(`已新增管理者：${target}`, 'success');
       setEmail('');
     } catch (err) {
       console.error('新增管理者失敗:', err);
@@ -405,6 +432,15 @@ function AdminManager() {
       showToast('已移除管理者', 'success');
     } catch {
       showToast('移除失敗', 'error');
+    }
+  };
+
+  const removeInvitation = async (email) => {
+    try {
+      await deleteDoc(doc(db, 'invitations', email));
+      showToast('已取消邀請', 'success');
+    } catch {
+      showToast('取消失敗', 'error');
     }
   };
 
@@ -493,15 +529,40 @@ function AdminManager() {
               <div className="relative flex-1">
                 <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="輸入對方的 Google email（需先登入過一次）"
+                  placeholder="輸入對方的 Google email"
                   className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" />
               </div>
               <button type="submit" disabled={adding || !email.trim()}
                 className="px-5 py-2.5 rounded-xl font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 flex items-center justify-center gap-2">
-                <Plus size={16} /> {adding ? '新增中...' : '新增'}
+                {adding ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus size={18} />}
+                新增 / 邀請
               </button>
             </form>
           </div>
+
+          {/* 邀請中名單 */}
+          {invitations.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mt-6">
+              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <Mail size={18} className="text-slate-500" /> 已發送邀請（待對方登入）
+              </h3>
+              <div className="space-y-2">
+                {invitations.map((inv) => (
+                  <div key={inv.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0 text-slate-500 font-bold">
+                        {inv.email[0].toUpperCase()}
+                      </div>
+                      <span className="text-sm font-medium text-slate-700">{inv.email}</span>
+                    </div>
+                    <button onClick={() => removeInvitation(inv.id)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg" title="取消邀請">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 管理者名單 */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">

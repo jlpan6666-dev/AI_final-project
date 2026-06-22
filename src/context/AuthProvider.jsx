@@ -5,7 +5,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
 } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
 
 const AuthContext = createContext(null);
@@ -62,9 +62,33 @@ export function AuthProvider({ children }) {
     setAdminLoading(true);
     const unsub = onSnapshot(
       doc(db, 'admins', user.uid),
-      (snap) => {
-        setAdminDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setAdminLoading(false);
+      async (snap) => {
+        if (snap.exists()) {
+          setAdminDoc({ id: snap.id, ...snap.data() });
+          setAdminLoading(false);
+        } else {
+          // 若無管理者文件，檢查是否有邀請信
+          if (user.email) {
+            try {
+              const invRef = doc(db, 'invitations', user.email);
+              const invSnap = await getDoc(invRef);
+              if (invSnap.exists()) {
+                await setDoc(doc(db, 'admins', user.uid), {
+                  role: 'admin',
+                  email: user.email,
+                  createdAt: serverTimestamp(),
+                });
+                await deleteDoc(invRef);
+                alert('您已透過邀請自動成為一般管理者！');
+                return; // setDoc 會觸發下一次 onSnapshot，這裡不特別 setAdminLoading
+              }
+            } catch (err) {
+              console.error('檢查邀請失敗:', err);
+            }
+          }
+          setAdminDoc(null);
+          setAdminLoading(false);
+        }
       },
       () => setAdminLoading(false)
     );
