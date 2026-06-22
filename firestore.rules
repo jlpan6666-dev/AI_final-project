@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function adminRole() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role;
+    }
+    function isSuper() {
+      return isAdmin() && adminRole() == 'super';
+    }
+
+    // 密碼文件：用戶端完全不可讀寫，只供 Rules 引擎比對。請手動於後台建立：
+    //   config/admin  ->  { secret: "minar7917" }
+    match /config/{doc} {
+      allow read, write: if false;
+    }
+
+    // 首次綁定管理者：寫入時由 Rules 在伺服器端比對密碼，密碼永不外洩，且寫入後不可被讀回
+    match /adminClaims/{uid} {
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.secret == get(/databases/$(database)/documents/config/admin).data.secret;
+      allow read, update, delete: if false;
+    }
+
+    // 管理者名單
+    match /admins/{uid} {
+      // 自己可讀自己（檢查身分用）；super 可讀全部（管理名單用）
+      allow get: if isSignedIn() && (request.auth.uid == uid || isSuper());
+      allow list: if isSuper();
+      // 透過密碼綁定，自我建立為 super（需已存在合法的 adminClaims）
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'super'
+        && exists(/databases/$(database)/documents/adminClaims/$(uid));
+      // super 可新增/調整/移除其他管理者（含同意升級）
+      allow create, update, delete: if isSuper();
+    }
+
+    // 升級為超級管理者的申請：一般管理者送出，super 審核
+    match /adminRequests/{id} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && adminRole() == 'admin'
+        && request.resource.data.fromUid == request.auth.uid;
+      allow update, delete: if isSuper();
+    }
+
+    // 使用者個人資料
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if isSuper();
+    }
+
+    // 課程：登入可讀；只有管理者可寫
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 註冊：學生只能建立/刪除自己的註冊；管理者可刪除
+    match /enrollments/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // 專案：登入可讀；作者可寫自己的；管理者可改/刪；任何登入者可按愛心（只能改 likedBy）
+    match /projects/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.authorUid == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid
+        || isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy'])
+      );
+      allow delete: if isSignedIn() && (resource.data.authorUid == request.auth.uid || isAdmin());
+    }
+  }
+}
