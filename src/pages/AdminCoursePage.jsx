@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   collection, query, where, onSnapshot, getDoc, doc, addDoc,
   updateDoc, deleteDoc, serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import {
-  ArrowLeft, Plus, Edit, Trash2, CalendarClock, BookOpen, AlertCircle
+  ArrowLeft, Plus, Edit, Trash2, CalendarClock, BookOpen, AlertCircle,
+  Users, CheckCircle2, XCircle, Clock, ExternalLink, FileText, Search
 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
@@ -52,6 +53,28 @@ function Tag({ children }) {
   return <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium border border-slate-200">{children}</span>;
 }
 
+function SubmissionBadge({ p }) {
+  // 連結優先：網址 > 檔案
+  const href = p?.url || p?.fileUrl || '';
+  const Icon = p?.isLate ? Clock : CheckCircle2;
+  const colorClass = p?.isLate ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50';
+  const label = p?.isLate ? '遲交' : '已繳';
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer"
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}
+        title={p.title || ''}>
+        <Icon size={12} /> {label} <ExternalLink size={10} className="opacity-60" />
+      </a>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${p?.isLate ? 'text-amber-600' : 'text-emerald-600'}`}>
+      <Icon size={12} /> {label}
+    </span>
+  );
+}
+
 export default function AdminCoursePage() {
   const { id } = useParams();
   const showToast = useToast();
@@ -60,12 +83,17 @@ export default function AdminCoursePage() {
   const [course, setCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_ASSIGNMENT);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+
+  // 學生名單與繳交狀況
+  const [students, setStudents] = useState([]);   // [{ uid, name, studentId, className, email }]
+  const [projects, setProjects] = useState([]);   // 本課程所有 projects
+  const [studentSearch, setStudentSearch] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -86,6 +114,80 @@ export default function AdminCoursePage() {
     }, () => setLoading(false));
     return () => unsub();
   }, [id]);
+
+  // 監聽本課程的學生（透過 enrollments → users 撈個人資料）
+  useEffect(() => {
+    const q = query(collection(db, 'enrollments'), where('courseId', '==', id));
+    const unsub = onSnapshot(q, async (snap) => {
+      const uids = snap.docs.map((d) => d.data().uid);
+      const profiles = await Promise.all(uids.map(async (uid) => {
+        try {
+          const uSnap = await getDoc(doc(db, 'users', uid));
+          if (!uSnap.exists()) return { uid, name: '(尚未填寫資料)', studentId: '', className: '', email: '' };
+          const u = uSnap.data();
+          return {
+            uid,
+            name: u.name || u.displayName || '',
+            studentId: u.studentId || '',
+            className: u.className || '',
+            email: u.email || '',
+          };
+        } catch {
+          return { uid, name: '(讀取失敗)', studentId: '', className: '', email: '' };
+        }
+      }));
+      // 依學號或姓名排序
+      profiles.sort((a, b) => (a.studentId || a.name).localeCompare(b.studentId || b.name));
+      setStudents(profiles);
+    });
+    return () => unsub();
+  }, [id]);
+
+  // 監聽本課程所有專案（用來判斷繳交狀況）
+  useEffect(() => {
+    const q = query(collection(db, 'projects'), where('courseId', '==', id));
+    const unsub = onSnapshot(q, (snap) => {
+      setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [id]);
+
+  // 對應表：projectByUidAndAssignment[uid][assignmentId] = project
+  const projectIndex = useMemo(() => {
+    const idx = {};
+    for (const p of projects) {
+      if (!p.authorUid) continue;
+      if (!idx[p.authorUid]) idx[p.authorUid] = {};
+      idx[p.authorUid][p.assignmentId || '__legacy__'] = p;
+    }
+    return idx;
+  }, [projects]);
+
+  // 過濾後的學生
+  const filteredStudents = useMemo(() => {
+    const kw = studentSearch.trim().toLowerCase();
+    if (!kw) return students;
+    return students.filter((s) =>
+      (s.name || '').toLowerCase().includes(kw)
+      || (s.studentId || '').toLowerCase().includes(kw)
+      || (s.className || '').toLowerCase().includes(kw)
+      || (s.email || '').toLowerCase().includes(kw)
+    );
+  }, [students, studentSearch]);
+
+  // 各作業統計
+  const assignmentStats = useMemo(() => {
+    const m = {};
+    for (const a of assignments) {
+      let submitted = 0, late = 0;
+      for (const s of students) {
+        const p = projectIndex[s.uid]?.[a.id];
+        if (p) { submitted += 1; if (p.isLate) late += 1; }
+      }
+      m[a.id] = { submitted, late, missing: students.length - submitted };
+    }
+    return m;
+  }, [assignments, students, projectIndex]);
 
   if (adminLoading || loading) return <Spinner label="載入中..." />;
   if (!isAdmin) return <div className="p-8 text-center text-rose-600 font-bold">權限不足</div>;
@@ -214,6 +316,114 @@ export default function AdminCoursePage() {
           </div>
         ))}
       </div>
+
+      {/* 學生繳交狀況 */}
+      <section className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <Users size={20} className="text-indigo-600" />
+            <h2 className="text-lg font-bold text-slate-800">學生繳交狀況</h2>
+            <span className="text-sm font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+              {students.length} 位學生
+            </span>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={studentSearch}
+              onChange={(e) => setStudentSearch(e.target.value)}
+              placeholder="搜尋學號 / 姓名 / 班級"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        {/* 各作業統計列 */}
+        {assignments.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
+            {assignments.map((a) => {
+              const s = assignmentStats[a.id] || { submitted: 0, late: 0, missing: students.length };
+              const total = students.length || 0;
+              const pct = total === 0 ? 0 : Math.round((s.submitted / total) * 100);
+              return (
+                <div key={a.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-sm font-semibold text-slate-700 truncate">{a.title}</span>
+                    <span className="text-xs font-bold text-indigo-600">{s.submitted}/{total}</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mb-2">
+                    <div className="h-full bg-indigo-500" style={{ width: `${pct}%` }}></div>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                    <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-500" /> 已繳 {s.submitted}</span>
+                    {s.late > 0 && <span className="flex items-center gap-1"><Clock size={11} className="text-amber-500" /> 遲交 {s.late}</span>}
+                    <span className="flex items-center gap-1"><XCircle size={11} className="text-rose-400" /> 未繳 {s.missing}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 學生列表 */}
+        {students.length === 0 ? (
+          <div className="text-center py-10 text-slate-400 text-sm">
+            尚無學生加入本課程
+          </div>
+        ) : filteredStudents.length === 0 ? (
+          <div className="text-center py-10 text-slate-400 text-sm">
+            找不到符合「{studentSearch}」的學生
+          </div>
+        ) : (
+          <div className="overflow-x-auto -mx-2">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                  <th className="px-3 py-2 font-medium">學號</th>
+                  <th className="px-3 py-2 font-medium">姓名</th>
+                  <th className="px-3 py-2 font-medium hidden sm:table-cell">班級</th>
+                  {assignments.length === 0 ? (
+                    <th className="px-3 py-2 font-medium text-center">繳交</th>
+                  ) : (
+                    assignments.map((a) => (
+                      <th key={a.id} className="px-3 py-2 font-medium text-center whitespace-nowrap">{a.title}</th>
+                    ))
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.map((s) => (
+                  <tr key={s.uid} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors">
+                    <td className="px-3 py-2.5 font-mono text-slate-700">{s.studentId || '—'}</td>
+                    <td className="px-3 py-2.5 font-medium text-slate-800">
+                      {s.name || '—'}
+                      {!s.studentId && !s.name && <span className="text-xs text-rose-500 ml-1">未填資料</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 hidden sm:table-cell">{s.className || '—'}</td>
+                    {assignments.length === 0 ? (
+                      <td className="px-3 py-2.5 text-center">
+                        {projectIndex[s.uid]?.['__legacy__']
+                          ? <SubmissionBadge p={projectIndex[s.uid]['__legacy__']} />
+                          : <span className="text-slate-300">—</span>}
+                      </td>
+                    ) : (
+                      assignments.map((a) => {
+                        const p = projectIndex[s.uid]?.[a.id];
+                        return (
+                          <td key={a.id} className="px-3 py-2.5 text-center">
+                            {p ? <SubmissionBadge p={p} /> : <span className="text-rose-300 font-bold">✕</span>}
+                          </td>
+                        );
+                      })
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {open && (
         <Modal
