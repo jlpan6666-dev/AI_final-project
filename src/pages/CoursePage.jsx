@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import {
   ArrowLeft, Plus, Edit, Trash2, Heart, ExternalLink, Users, Monitor,
-  CalendarClock, Clock, AlertCircle, FileText, Link as LinkIcon, X
+  CalendarClock, Clock, AlertCircle, FileText, Link as LinkIcon, UploadCloud, Check
 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
@@ -14,8 +14,9 @@ import { useToast } from '../context/ToastProvider';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import { formatDeadline, deadlineStatus } from '../lib/deadline';
+import { pickFromDrive } from '../lib/drivePicker';
 
-const EMPTY_FORM = { title: '', description: '', url: '', fileUrl: '' };
+const EMPTY_FORM = { title: '', description: '', url: '', fileUrl: '', fileName: '' };
 
 export default function CoursePage() {
   const { id } = useParams();
@@ -33,6 +34,7 @@ export default function CoursePage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [drivePicking, setDrivePicking] = useState(false);
 
   // 載入課程
   useEffect(() => {
@@ -90,7 +92,7 @@ export default function CoursePage() {
     setIsModalOpen(true);
   };
   const openEdit = (p) => {
-    setForm({ title: p.title || '', description: p.description || '', url: p.url || '', fileUrl: p.fileUrl || '' });
+    setForm({ title: p.title || '', description: p.description || '', url: p.url || '', fileUrl: p.fileUrl || '', fileName: p.fileName || '' });
     setEditingId(p.id);
     setIsModalOpen(true);
   };
@@ -103,6 +105,23 @@ export default function CoursePage() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
+  };
+
+  // 開啟 Google Drive Picker 上傳/挑選檔案
+  const handleDrivePick = async () => {
+    setDrivePicking(true);
+    try {
+      const file = await pickFromDrive();
+      if (file) {
+        setForm((f) => ({ ...f, fileUrl: file.url, fileName: file.name }));
+        showToast(`已選擇檔案：${file.name}`, 'success');
+      }
+    } catch (err) {
+      console.error('Drive 選檔失敗:', err);
+      showToast('Drive 授權或載入失敗，請重試', 'error');
+    } finally {
+      setDrivePicking(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -124,6 +143,7 @@ export default function CoursePage() {
         description: fields.description ? form.description.trim() : '',
         url: fields.url ? form.url.trim() : '',
         fileUrl: fields.file ? form.fileUrl.trim() : '',
+        fileName: fields.file ? form.fileName.trim() : '',
         // 提交者快照
         studentId: profile?.studentId || '',
         name: profile?.name || user?.displayName || '',
@@ -333,11 +353,31 @@ export default function CoursePage() {
             )}
 
             {fields.file && (
-              <Field label="檔案連結 (Google Drive)" icon={<FileText size={15} />}>
-                <input type="url" name="fileUrl" value={form.fileUrl} onChange={handleChange}
-                  placeholder="貼上 Google Drive 分享連結" className="field-input" />
+              <Field label="專案檔案 (Google Drive)" icon={<FileText size={15} />}>
+                {form.fileUrl ? (
+                  <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+                    <a href={form.fileUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-emerald-800 font-medium truncate hover:underline">
+                      <Check size={16} className="flex-shrink-0" />
+                      <span className="truncate">{form.fileName || '已選擇檔案'}</span>
+                    </a>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button type="button" onClick={handleDrivePick} disabled={drivePicking}
+                        className="text-xs text-emerald-700 hover:underline">更換</button>
+                      <button type="button" onClick={() => setForm((f) => ({ ...f, fileUrl: '', fileName: '' }))}
+                        className="text-xs text-slate-500 hover:text-rose-600">移除</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={handleDrivePick} disabled={drivePicking}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all disabled:opacity-60">
+                    {drivePicking
+                      ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div> 開啟 Google Drive...</>
+                      : <><UploadCloud size={18} /> 從 Google Drive 上傳／選擇檔案</>}
+                  </button>
+                )}
                 <p className="text-xs text-slate-400 mt-1">
-                  目前為連結貼上模式；直接從瀏覽器上傳到 Drive 的功能將於下一階段開放。
+                  檔案會上傳到你自己的 Google Drive，系統只保存連結並盡力設為「知道連結者可看」。
                 </p>
               </Field>
             )}

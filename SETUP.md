@@ -45,17 +45,26 @@
 
 ---
 
-## 三、Drive 檔案上傳（下一階段 / Phase 6）
+## 三、Drive 檔案上傳（Phase 6，已完成）
 
-目前「檔案」欄位先採「貼上 Google Drive 連結」。
-若要做到「在網頁內直接選檔上傳到 Drive」（Option C），需先在 Google Cloud Console 完成：
+當課程勾選「檔案上傳」欄位時，學生會看到「從 Google Drive 上傳／選擇檔案」按鈕，
+透過 Google Picker（scope `drive.file`）把檔案上傳到自己的 Drive，系統只保存連結。
 
-1. 進入專案 `ai-final-project-a69b4` 的 Google Cloud Console。
-2. 啟用 **Google Drive API**、**Google Picker API**。
-3. 設定 **OAuth 同意畫面**，範圍加入 `https://www.googleapis.com/auth/drive.file`（非受限範圍，免繁複審查）。
-4. 建立 **OAuth 2.0 用戶端 ID**（網頁應用程式），授權來源加入 Vercel 網址與 `http://localhost`。
-5. 建立 **API 金鑰**（給 Picker 用）。
-6. 把「用戶端 ID」與「API 金鑰」提供給開發者接入。
+設定值放在 [`src/driveConfig.js`](src/driveConfig.js)：
+- `clientId`：OAuth 2.0 用戶端 ID
+- `apiKey`：給 Picker 用的 API 金鑰（目前共用 Firebase 網頁金鑰）
+- `appId`：GCP 專案編號（`1011815467681`）
+
+### Google Cloud Console 需完成（一次性）
+1. 專案 `ai-final-project-a69b4` 中啟用 **Google Drive API**、**Google Picker API**。
+2. OAuth 同意畫面：使用者類型「外部」、**已發布 (In production)**、資料存取加入 `https://www.googleapis.com/auth/drive.file`（非敏感範圍，免審查）。**不要上傳 logo**，以免觸發強制驗證。
+3. OAuth 2.0 用戶端 ID（網頁應用程式）的「已授權 JavaScript 來源」需含：
+   `http://localhost:5173` 與 `https://ai-final-project-ten.vercel.app`。
+4. 若 API 金鑰有設「API 限制」，務必把 **Google Picker API** 勾入，否則 Picker 會失敗。
+
+### 注意事項
+- 系統會盡力把檔案權限設為「知道連結者可讀」方便老師批改；但**學校 Google Workspace 若停用外部分享**，此步驟可能失敗，屆時老師需請學生手動分享，或學生改用個人 Gmail 的 Drive。
+- 共用 Firebase API 金鑰可運作；若日後想分離，可在 Console 另建一把限制為 Google Picker API 的金鑰，替換 `driveConfig.js` 的 `apiKey` 即可。
 
 ---
 
