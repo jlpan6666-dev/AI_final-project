@@ -26,7 +26,7 @@ export default function Layout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center gap-4">
           <Link to="/" className="flex items-center gap-2 sm:gap-3 text-indigo-600">
             <Trophy className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.5]" />
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">AI 專題課程平台</h1>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">課程學習平台</h1>
           </Link>
 
           <div className="flex items-center gap-2 sm:gap-3">

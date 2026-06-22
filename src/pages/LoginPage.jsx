@@ -30,7 +30,7 @@ export default function LoginPage() {
         <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-5">
           <Trophy size={32} className="stroke-[2.5]" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">AI 專題課程平台</h1>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">課程學習平台</h1>
         <p className="text-slate-500 mb-8 text-sm leading-relaxed">
           請使用 Google 帳號登入後，填寫基本資料並輸入課程代碼，即可開始繳交專題。
         </p>
