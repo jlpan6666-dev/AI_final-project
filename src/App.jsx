@@ -18,11 +18,11 @@ function RequireAuth() {
   return <Outlet />;
 }
 
-// 已登入但資料未填完整 → 導向填資料頁
+// 已登入但資料未填完整 → 導向填資料頁（管理者＝教師/助教 可略過）
 function RequireProfile() {
-  const { profileComplete, loading } = useAuth();
+  const { profileComplete, isAdmin, loading } = useAuth();
   if (loading) return <FullScreenSpinner />;
-  if (!profileComplete) return <Navigate to="/setup-profile" replace />;
+  if (!profileComplete && !isAdmin) return <Navigate to="/setup-profile" replace />;
   return <Outlet />;
 }
 
@@ -37,12 +37,14 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route path="/setup-profile" element={<SetupProfilePage />} />
 
-            {/* 需登入 + 資料完整 */}
-            <Route element={<RequireProfile />}>
-              <Route element={<Layout />}>
+            <Route element={<Layout />}>
+              {/* 管理後台：教師/助教免填學生資料即可進入 */}
+              <Route path="/admin" element={<AdminPage />} />
+
+              {/* 需登入 + 資料完整（管理者可略過） */}
+              <Route element={<RequireProfile />}>
                 <Route index element={<HomePage />} />
                 <Route path="/course/:id" element={<CoursePage />} />
-                <Route path="/admin" element={<AdminPage />} />
               </Route>
             </Route>
           </Route>

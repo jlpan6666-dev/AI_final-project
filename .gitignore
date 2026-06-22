@@ -23,3 +23,6 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Claude memory (canonical copy lives in ~/.claude)
+memory/

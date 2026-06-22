@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { UserCog, LogOut, IdCard, User, GraduationCap } from 'lucide-react';
+import { UserCog, LogOut, IdCard, User, GraduationCap, Shield } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
 import { useToast } from '../context/ToastProvider';
@@ -131,9 +131,19 @@ export default function SetupProfilePage() {
           </button>
         </form>
 
+        <div className="mt-5 pt-4 border-t border-slate-100 text-center">
+          <p className="text-xs text-slate-400 mb-2">是教師或助教嗎？無需填寫學生資料</p>
+          <button
+            onClick={() => navigate('/admin')}
+            className="inline-flex items-center justify-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-medium text-sm py-1.5"
+          >
+            <Shield size={15} /> 我是教師／助教，前往管理後台
+          </button>
+        </div>
+
         <button
           onClick={() => { logout(); navigate('/login'); }}
-          className="w-full mt-3 flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-600 text-sm py-2"
+          className="w-full mt-2 flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-600 text-sm py-2"
         >
           <LogOut size={15} /> 改用其他帳號登入
         </button>
