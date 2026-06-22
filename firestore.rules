@@ -92,6 +92,12 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
+    // 課程作業單元：登入可讀；管理者可寫
+    match /assignments/{id} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
     // 專案：登入可讀；作者可寫自己的；管理者可改/刪；任何登入者可按愛心（只能改 likedBy）
     match /projects/{id} {
       allow read: if isSignedIn();

@@ -111,7 +111,6 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {courses.map((c) => {
-              const status = deadlineStatus(c.deadline, c.allowLate);
               return (
                 <Link
                   key={c.id}
@@ -122,14 +121,7 @@ export default function HomePage() {
                     <h3 className="text-lg font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{c.name}</h3>
                     <ChevronRight size={20} className="text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0 mt-1" />
                   </div>
-                  <div className="text-xs font-medium text-slate-400 mb-3">課程代碼：{c.code}</div>
-                  <div className="mt-auto flex items-center gap-2 text-sm">
-                    <CalendarClock size={15} className={status.color} />
-                    <span className={status.color}>{formatDeadline(c.deadline)}</span>
-                  </div>
-                  <div className={`mt-2 inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full w-max ${status.badgeClass}`}>
-                    <Clock size={12} /> {status.label}
-                  </div>
+                  <div className="text-xs font-medium text-slate-400">課程代碼：{c.code}</div>
                 </Link>
               );
             })}

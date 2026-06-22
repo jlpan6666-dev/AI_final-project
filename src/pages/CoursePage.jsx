@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import {
   ArrowLeft, Plus, Edit, Trash2, Heart, ExternalLink, Users, Monitor,
-  CalendarClock, Clock, AlertCircle, FileText, Link as LinkIcon, UploadCloud, Check
+  CalendarClock, Clock, AlertCircle, FileText, Link as LinkIcon, Check, BookOpen
 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
@@ -26,10 +26,13 @@ export default function CoursePage() {
   const [course, setCourse] = useState(null);
   const [courseLoading, setCourseLoading] = useState(true);
   const [enrolled, setEnrolled] = useState(false);
+  const [assignments, setAssignments] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [projLoading, setProjLoading] = useState(true);
+  const [loadingAssign, setLoadingAssign] = useState(true);
+  const [loadingProj, setLoadingProj] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeAssignment, setActiveAssignment] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -38,7 +41,7 @@ export default function CoursePage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
 
-  // 載入課程
+  // 1. Load Course
   useEffect(() => {
     let active = true;
     (async () => {
@@ -51,7 +54,7 @@ export default function CoursePage() {
     return () => { active = false; };
   }, [id]);
 
-  // 是否已註冊
+  // 2. Check Enrollment
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(doc(db, 'enrollments', `${id}_${user.uid}`), (snap) => {
@@ -60,47 +63,55 @@ export default function CoursePage() {
     return () => unsub();
   }, [id, user]);
 
-  // 監聽本課程所有專案
+  // 3. Load Assignments
   useEffect(() => {
-    const q = query(collection(db, 'projects'), where('courseId', '==', id));
+    const q = query(collection(db, 'assignments'), where('courseId', '==', id));
     const unsub = onSnapshot(q, (snap) => {
-      setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setProjLoading(false);
-    }, () => setProjLoading(false));
+      setAssignments(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt?.toMillis() - b.createdAt?.toMillis()));
+      setLoadingAssign(false);
+    }, () => setLoadingAssign(false));
     return () => unsub();
   }, [id]);
 
-  const status = course ? deadlineStatus(course.deadline, course.allowLate) : null;
-  const myProject = useMemo(
-    () => projects.find((p) => p.authorUid === user?.uid) || null,
-    [projects, user]
-  );
+  // 4. Load Projects
+  useEffect(() => {
+    const q = query(collection(db, 'projects'), where('courseId', '==', id));
+    const unsub = onSnapshot(q, (snap) => {
+      setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoadingProj(false);
+    }, () => setLoadingProj(false));
+    return () => unsub();
+  }, [id]);
 
-  // 依愛心排序
-  const ranked = useMemo(() => {
-    return [...projects].sort((a, b) => {
-      const la = a.likedBy?.length || 0;
-      const lb = b.likedBy?.length || 0;
-      if (la !== lb) return lb - la;
-      return (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0);
-    });
-  }, [projects]);
+  const joinCourse = async () => {
+    try {
+      await setDoc(doc(db, 'enrollments', `${id}_${user.uid}`), {
+        courseId: id, uid: user.uid, joinedAt: serverTimestamp(),
+      });
+      showToast('已加入課程', 'success');
+    } catch {
+      showToast('加入失敗', 'error');
+    }
+  };
 
-  const fields = course?.fields || { url: true, description: true, file: false };
-
-  const openCreate = () => {
+  const openCreate = (assign) => {
+    setActiveAssignment(assign);
     setForm(EMPTY_FORM);
     setEditingId(null);
     setIsModalOpen(true);
   };
-  const openEdit = (p) => {
+
+  const openEdit = (p, assign) => {
+    setActiveAssignment(assign);
     setForm({ title: p.title || '', description: p.description || '', url: p.url || '', fileUrl: p.fileUrl || '', fileName: p.fileName || '' });
     setEditingId(p.id);
     setIsModalOpen(true);
   };
+
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingId(null);
+    setActiveAssignment(null);
     setForm(EMPTY_FORM);
   };
 
@@ -109,9 +120,8 @@ export default function CoursePage() {
     setForm((f) => ({ ...f, [name]: value }));
   };
 
-  // 在自家 UI 直接上傳本機檔案到老師指定的課程資料夾（不開 Picker、學生看不到資料夾）
   const triggerFilePick = () => {
-    if (!course?.driveFolderId) {
+    if (!activeAssignment?.driveFolderId) {
       showToast('老師尚未設定繳交資料夾，請聯絡老師', 'error');
       return;
     }
@@ -120,16 +130,16 @@ export default function CoursePage() {
 
   const handleFileSelected = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = ''; // 清空，讓同一個檔案可再次選取
+    e.target.value = '';
     if (!file) return;
-    if (!course?.driveFolderId) {
+    if (!activeAssignment?.driveFolderId) {
       showToast('老師尚未設定繳交資料夾，請聯絡老師', 'error');
       return;
     }
     setUploading(true);
     setUploadProgress(0);
     try {
-      const res = await uploadFileToDrive(file, course.driveFolderId, setUploadProgress);
+      const res = await uploadFileToDrive(file, activeAssignment.driveFolderId, setUploadProgress);
       setForm((f) => ({ ...f, fileUrl: res.url, fileName: res.name }));
       showToast(`已上傳：${res.name}`, 'success');
     } catch (err) {
@@ -142,10 +152,14 @@ export default function CoursePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!activeAssignment) return;
+    const status = deadlineStatus(activeAssignment.deadline, activeAssignment.allowLate);
+    
     if (!status.canSubmit && !editingId) {
-      showToast('本課程已截止且不開放補交', 'error');
+      showToast('本作業已截止且不開放補交', 'error');
       return;
     }
+    const fields = activeAssignment.fields || {};
     if (fields.url && form.url && !/^https?:\/\//.test(form.url)) {
       showToast('網址請包含 http:// 或 https://', 'error');
       return;
@@ -155,12 +169,12 @@ export default function CoursePage() {
     try {
       const payload = {
         courseId: id,
+        assignmentId: activeAssignment.id,
         title: form.title.trim(),
         description: fields.description ? form.description.trim() : '',
         url: fields.url ? form.url.trim() : '',
         fileUrl: fields.file ? form.fileUrl.trim() : '',
         fileName: fields.file ? form.fileName.trim() : '',
-        // 提交者快照
         studentId: profile?.studentId || '',
         name: profile?.name || user?.displayName || '',
         className: profile?.className || '',
@@ -213,17 +227,6 @@ export default function CoursePage() {
     }
   };
 
-  const joinCourse = async () => {
-    try {
-      await setDoc(doc(db, 'enrollments', `${id}_${user.uid}`), {
-        courseId: id, uid: user.uid, joinedAt: serverTimestamp(),
-      });
-      showToast('已加入課程', 'success');
-    } catch {
-      showToast('加入失敗', 'error');
-    }
-  };
-
   if (courseLoading) return <Spinner label="載入課程中..." />;
   if (!course) {
     return (
@@ -235,99 +238,164 @@ export default function CoursePage() {
     );
   }
 
+  // 處理沒有 assignmentId 的舊專案
+  const legacyProjects = projects.filter(p => !p.assignmentId).sort((a, b) => {
+    const la = a.likedBy?.length || 0;
+    const lb = b.likedBy?.length || 0;
+    if (la !== lb) return lb - la;
+    return (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0);
+  });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Link to="/" className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 text-sm font-medium">
         <ArrowLeft size={16} /> 回我的課程
       </Link>
 
       {/* 課程標頭 */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">{course.name}</h1>
-            <div className="text-sm text-slate-400 mt-1">課程代碼：{course.code}</div>
+            <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+              <BookOpen size={28} className="text-indigo-600" />
+              {course.name}
+            </h1>
+            <div className="text-sm text-slate-500 mt-2">課程代碼：<span className="font-mono font-semibold text-slate-700">{course.code}</span></div>
           </div>
-          <div className="flex flex-col items-start sm:items-end gap-2">
-            <div className="flex items-center gap-2 text-sm">
-              <CalendarClock size={16} className={status.color} />
-              <span className={status.color}>{formatDeadline(course.deadline)}</span>
-            </div>
-            <div className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${status.badgeClass}`}>
-              <Clock size={12} /> {status.label}
-            </div>
-          </div>
-        </div>
-
-        {/* 繳交區 */}
-        <div className="mt-5 pt-5 border-t border-slate-100">
-          {!enrolled ? (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <p className="text-sm text-amber-800">你尚未加入本課程，加入後才能繳交專案。</p>
-              <button onClick={joinCourse} className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium">加入課程</button>
-            </div>
-          ) : myProject ? (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="text-sm text-slate-600">
-                你已繳交：<span className="font-semibold text-slate-800">{myProject.title}</span>
-                {myProject.isLate && <span className="ml-2 text-xs text-amber-600 font-medium">（遲交）</span>}
-              </div>
-              <button
-                onClick={() => openEdit(myProject)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium"
-              >
-                <Edit size={16} /> 編輯我的專案
-              </button>
-            </div>
-          ) : status.canSubmit ? (
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
-            >
-              <Plus size={18} /> 繳交專案
+          {!enrolled && (
+            <button onClick={joinCourse} className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm transition-colors">
+              加入課程
             </button>
-          ) : (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-sm text-rose-700">
-              本課程已截止且不開放補交，無法繳交新專案。
-            </div>
           )}
         </div>
       </div>
 
-      {/* 專案排行榜 */}
-      <div>
-        <h2 className="text-lg font-bold text-slate-800 mb-4">專案排行榜（依愛心）</h2>
-        {projLoading ? (
-          <Spinner label="載入專案中..." />
-        ) : ranked.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-slate-100">
-            <Monitor size={44} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500">目前還沒有專案，成為第一個繳交的人吧！</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ranked.map((p, index) => (
-              <ProjectCard
-                key={p.id}
-                project={p}
-                rank={index + 1}
-                canEdit={isAdmin || p.authorUid === user?.uid}
-                likedByMe={p.likedBy?.includes(user?.uid)}
-                onLike={() => toggleLike(p)}
-                onEdit={() => openEdit(p)}
-                onDelete={() => setDeleteId(p.id)}
-                showFile={fields.file}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* 作業單元列表 */}
+      {loadingAssign || loadingProj ? (
+        <Spinner label="載入作業中..." />
+      ) : assignments.length === 0 && legacyProjects.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-slate-100">
+          <Monitor size={44} className="mx-auto text-slate-300 mb-4" />
+          <p className="text-slate-500">目前還沒有任何作業單元。</p>
+        </div>
+      ) : (
+        <div className="space-y-12">
+          {assignments.map(assign => {
+            const status = deadlineStatus(assign.deadline, assign.allowLate);
+            const assignProjects = projects.filter(p => p.assignmentId === assign.id);
+            const myProject = assignProjects.find(p => p.authorUid === user?.uid);
+            
+            const ranked = [...assignProjects].sort((a, b) => {
+              const la = a.likedBy?.length || 0;
+              const lb = b.likedBy?.length || 0;
+              if (la !== lb) return lb - la;
+              return (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0);
+            });
+
+            return (
+              <div key={assign.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                {/* 作業標頭 & 繳交狀態區 */}
+                <div className="bg-slate-50 p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">{assign.title}</h2>
+                    <div className="flex flex-wrap items-center gap-3 mt-3">
+                      <div className="flex items-center gap-1.5 text-sm text-slate-600">
+                        <CalendarClock size={16} className={status.color} />
+                        <span className={status.color}>{formatDeadline(assign.deadline)}</span>
+                      </div>
+                      <div className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${status.badgeClass}`}>
+                        <Clock size={12} /> {status.label}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-shrink-0">
+                    {!enrolled ? (
+                      <div className="text-sm text-amber-700 bg-amber-50 px-4 py-2 rounded-lg border border-amber-200">
+                        加入課程後才能繳交
+                      </div>
+                    ) : myProject ? (
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm text-slate-600 text-right">
+                          已繳交：<span className="font-semibold text-slate-800">{myProject.title}</span>
+                          {myProject.isLate && <span className="block text-xs text-amber-600 mt-0.5">（遲交）</span>}
+                        </div>
+                        <button onClick={() => openEdit(myProject, assign)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-sm font-medium transition-colors">
+                          <Edit size={16} /> 編輯
+                        </button>
+                      </div>
+                    ) : status.canSubmit ? (
+                      <button onClick={() => openCreate(assign)}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm transition-colors">
+                        <Plus size={18} /> 繳交專案
+                      </button>
+                    ) : (
+                      <div className="text-sm text-rose-700 bg-rose-50 px-4 py-2 rounded-lg border border-rose-200">
+                        已截止，無法繳交
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 作業排行榜 */}
+                <div className="p-6">
+                  {ranked.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                      目前還沒有人繳交，成為第一個吧！
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {ranked.map((p, index) => (
+                        <ProjectCard
+                          key={p.id} project={p} rank={index + 1}
+                          canEdit={isAdmin || p.authorUid === user?.uid}
+                          likedByMe={p.likedBy?.includes(user?.uid)}
+                          onLike={() => toggleLike(p)}
+                          onEdit={() => openEdit(p, assign)}
+                          onDelete={() => setDeleteId(p.id)}
+                          showFile={assign.fields?.file}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 舊資料 / 未分類的專案 (相容性) */}
+          {legacyProjects.length > 0 && (
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="bg-slate-50 p-6 border-b border-slate-200">
+                <h2 className="text-xl font-bold text-slate-800">其他專案 (未分類)</h2>
+                <p className="text-sm text-slate-500 mt-1">這些是系統升級前繳交的專案。</p>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {legacyProjects.map((p, index) => (
+                    <ProjectCard
+                      key={p.id} project={p} rank={index + 1}
+                      canEdit={isAdmin || p.authorUid === user?.uid}
+                      likedByMe={p.likedBy?.includes(user?.uid)}
+                      onLike={() => toggleLike(p)}
+                      onEdit={() => openEdit(p, course)} // Fallback to course fields
+                      onDelete={() => setDeleteId(p.id)}
+                      showFile={true} // Just show it if it exists
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 繳交 / 編輯 Modal */}
-      {isModalOpen && (
+      {isModalOpen && activeAssignment && (
         <Modal
           title={editingId ? '編輯專案' : '繳交專案'}
-          icon={editingId ? <Edit size={22} className="text-indigo-600" /> : <Monitor size={22} className="text-indigo-600" />}
+          icon={<Monitor size={22} className="text-indigo-600" />}
           onClose={closeModal}
           footer={(
             <>
@@ -343,7 +411,7 @@ export default function CoursePage() {
           )}
         >
           <form id="projectForm" onSubmit={handleSubmit} className="space-y-4">
-            {status.isLate && (
+            {deadlineStatus(activeAssignment.deadline, activeAssignment.allowLate).isLate && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-2.5">
                 ⚠️ 已超過截止時間，此次繳交將被標記為「遲交」。
               </div>
@@ -354,25 +422,25 @@ export default function CoursePage() {
                 placeholder="例如：智慧校園導覽機器人" className="field-input" />
             </Field>
 
-            {fields.description && (
+            {activeAssignment.fields?.description && (
               <Field label="專案說明" required>
                 <textarea name="description" rows="4" required value={form.description} onChange={handleChange}
                   placeholder="簡短描述你們的 AI 專案提供什麼功能..." className="field-input resize-none"></textarea>
               </Field>
             )}
 
-            {fields.url && (
+            {activeAssignment.fields?.url && (
               <Field label="網站連結 (URL)" required icon={<LinkIcon size={15} />}>
                 <input type="url" name="url" required value={form.url} onChange={handleChange}
                   placeholder="https://your-ai-website.com" className="field-input" />
               </Field>
             )}
 
-            {fields.file && (
+            {activeAssignment.fields?.file && (
               <Field label="專案檔案 (Google Drive)" icon={<FileText size={15} />}>
                 <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelected} />
 
-                {!course?.driveFolderId ? (
+                {!activeAssignment.driveFolderId ? (
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-2.5">
                     老師尚未設定繳交資料夾，暫時無法上傳檔案，請聯絡老師。
                   </div>
@@ -398,51 +466,44 @@ export default function CoursePage() {
                     </a>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <button type="button" onClick={triggerFilePick}
-                        className="text-xs text-emerald-700 hover:underline">更換</button>
-                      <button type="button" onClick={() => setForm((f) => ({ ...f, fileUrl: '', fileName: '' }))}
-                        className="text-xs text-slate-500 hover:text-rose-600">移除</button>
+                        className="text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-200 px-3 py-1 rounded-lg text-xs font-semibold">
+                        重新選擇
+                      </button>
                     </div>
                   </div>
                 ) : (
-                  <button type="button" onClick={triggerFilePick}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all">
-                    <UploadCloud size={18} /> 選擇檔案上傳
-                  </button>
-                )}
-
-                {course?.driveFolderId && !uploading && (
-                  <p className="text-xs text-slate-400 mt-1">
-                    在此直接選檔上傳，檔案會送到老師指定的繳交資料夾。
-                  </p>
+                  <div onClick={triggerFilePick}
+                    className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer transition-colors group">
+                    <div className="w-12 h-12 bg-slate-100 group-hover:bg-indigo-100 rounded-full flex items-center justify-center mb-3 transition-colors">
+                      <UploadCloud size={24} className="text-slate-400 group-hover:text-indigo-600" />
+                    </div>
+                    <p className="text-sm font-medium">點擊選擇檔案 (上傳至課程資料夾)</p>
+                    <p className="text-xs text-slate-400 mt-1">自動同步至 Google Drive</p>
+                  </div>
                 )}
               </Field>
             )}
           </form>
           <style>{`
-            .field-input { width:100%; padding:0.625rem 1rem; border-radius:0.75rem; border:1px solid #cbd5e1; outline:none; transition:all .15s; }
+            .field-input { width:100%; padding:0.625rem 1rem; border-radius:0.75rem; border:1px solid #cbd5e1; outline:none; transition:all .15s; background:#fff; }
             .field-input:focus { border-color:#6366f1; box-shadow:0 0 0 2px #c7d2fe; }
           `}</style>
         </Modal>
       )}
 
-      {/* 刪除確認 */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteId(null); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
-            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle size={32} />
-            </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">確定要刪除這個專案嗎？</h2>
-            <p className="text-slate-500 mb-6 text-sm">此動作無法復原，相關愛心紀錄也會一併刪除。</p>
-            <div className="flex justify-center gap-3">
-              <button onClick={() => setDeleteId(null)}
-                className="px-5 py-2.5 rounded-xl font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 flex-1">取消</button>
-              <button onClick={executeDelete}
-                className="px-5 py-2.5 rounded-xl font-medium bg-rose-600 hover:bg-rose-700 text-white flex-1">確認刪除</button>
-            </div>
-          </div>
-        </div>
+        <Modal
+          title="確定要刪除專案嗎？"
+          icon={<AlertCircle size={22} className="text-rose-600" />}
+          onClose={() => setDeleteId(null)}
+          footer={(
+            <>
+              <button onClick={() => setDeleteId(null)} className="px-5 py-2.5 rounded-xl font-medium text-slate-600 hover:bg-slate-200">取消</button>
+              <button onClick={executeDelete} className="px-5 py-2.5 rounded-xl font-medium bg-rose-600 hover:bg-rose-700 text-white">確認刪除</button>
+            </>
+          )}>
+          <p className="text-slate-600 text-sm leading-relaxed">專案刪除後將無法復原。確定要繼續嗎？</p>
+        </Modal>
       )}
     </div>
   );
@@ -451,7 +512,7 @@ export default function CoursePage() {
 function Field({ label, icon, required, children }) {
   return (
     <div>
-      <label className="text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+      <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1.5">
         {icon} {label} {required && <span className="text-rose-500">*</span>}
       </label>
       {children}
@@ -460,83 +521,72 @@ function Field({ label, icon, required, children }) {
 }
 
 function ProjectCard({ project, rank, canEdit, likedByMe, onLike, onEdit, onDelete, showFile }) {
-  const likesCount = project.likedBy?.length || 0;
-  let domain = '';
-  try { if (project.url) domain = new URL(project.url).hostname; } catch { /* ignore */ }
-
+  const likes = project.likedBy?.length || 0;
   return (
-    <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col border border-slate-100 relative group">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col h-full hover:shadow-md transition-shadow relative group">
       {rank <= 3 && (
-        <div className="absolute top-0 left-0 bg-gradient-to-br from-amber-400 to-orange-500 text-white w-12 h-12 flex items-center justify-center font-bold text-lg rounded-br-2xl shadow-md z-10">
-          #{rank}
+        <div className={`absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md z-10
+          ${rank === 1 ? 'bg-amber-400' : rank === 2 ? 'bg-slate-300' : 'bg-amber-700'}`}>
+          {rank}
         </div>
       )}
-
-      {canEdit && (
-        <div className="absolute top-3 right-3 flex items-center gap-2 z-20 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-          <button onClick={onEdit} title="編輯"
-            className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 rounded-lg shadow-sm transition-all">
-            <Edit size={16} />
-          </button>
-          <button onClick={onDelete} title="刪除"
-            className="p-1.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 rounded-lg shadow-sm transition-all">
-            <Trash2 size={16} />
-          </button>
-        </div>
-      )}
-
-      <div className="p-4 sm:p-6 flex-grow flex flex-col">
-        <div className={`mb-3 ${canEdit ? 'pr-14' : ''} ${rank <= 3 ? 'ml-10 sm:ml-12' : ''}`}>
-          <div className="flex items-center gap-2">
-            {domain && (
-              <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} alt=""
-                className="w-7 h-7 rounded-md bg-white border border-slate-200 p-0.5 flex-shrink-0 shadow-sm"
-                onError={(e) => { e.target.style.display = 'none'; }} />
+      
+      <div className="flex-1">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <h3 className="text-lg font-bold text-slate-800 line-clamp-2 leading-tight">{project.title}</h3>
+          <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 bg-white/80 rounded-lg">
+            {canEdit && (
+              <>
+                <button onClick={onEdit} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"><Edit size={16} /></button>
+                <button onClick={onDelete} className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md"><Trash2 size={16} /></button>
+              </>
             )}
-            <h3 className="text-lg font-bold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-1" title={project.title}>
-              {project.title}
-            </h3>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-indigo-500 font-medium mt-2">
-            <Users size={15} />
-            <span className="line-clamp-1">{project.name}{project.className ? ` · ${project.className}` : ''}</span>
           </div>
         </div>
-
+        
         {project.description && (
-          <p className="text-slate-600 text-sm mb-4 line-clamp-3 flex-grow" title={project.description}>
-            {project.description}
-          </p>
+          <p className="text-sm text-slate-500 line-clamp-3 mb-4 leading-relaxed">{project.description}</p>
         )}
-
-        {project.isLate && (
-          <span className="inline-block text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full w-max mb-2">遲交</span>
-        )}
-      </div>
-
-      <div className="px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto gap-2">
-        <button onClick={onLike}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
-            likedByMe ? 'bg-rose-100 text-rose-600 hover:bg-rose-200'
-              : 'bg-white text-slate-500 hover:bg-slate-100 hover:text-rose-500 border border-slate-200 shadow-sm'}`}>
-          <Heart size={18} className={likedByMe ? 'fill-rose-500' : ''} />
-          <span className="font-bold">{likesCount}</span>
-        </button>
-
-        <div className="flex items-center gap-2">
-          {showFile && project.fileUrl && (
-            <a href={project.fileUrl} target="_blank" rel="noopener noreferrer" title="檔案"
-              className="flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-100 px-3 py-2 rounded-full transition-colors">
-              <FileText size={15} />
-            </a>
-          )}
+        
+        <div className="flex flex-col gap-2 mt-auto">
           {project.url && (
             <a href={project.url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors">
-              <span>前往</span><ExternalLink size={15} />
+              className="flex items-center gap-1.5 text-sm text-indigo-600 hover:underline font-medium break-all">
+              <ExternalLink size={14} className="flex-shrink-0" />
+              <span className="line-clamp-1">{project.url}</span>
+            </a>
+          )}
+          {showFile && project.fileUrl && (
+            <a href={project.fileUrl} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-sm text-emerald-600 hover:underline font-medium break-all">
+              <FileText size={14} className="flex-shrink-0" />
+              <span className="line-clamp-1">{project.fileName || '查看檔案'}</span>
             </a>
           )}
         </div>
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+            {project.name?.[0] || '?'}
+          </div>
+          <div className="text-sm">
+            <div className="font-semibold text-slate-700">{project.name || '匿名'}</div>
+            {project.className && <div className="text-xs text-slate-400">{project.className}</div>}
+          </div>
+        </div>
+
+        <button
+          onClick={onLike}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border
+            ${likedByMe 
+              ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100' 
+              : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+        >
+          <Heart size={16} className={likedByMe ? 'fill-current' : ''} />
+          {likes > 0 && <span>{likes}</span>}
+        </button>
       </div>
     </div>
   );

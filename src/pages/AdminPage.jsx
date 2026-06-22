@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   collection, query, where, onSnapshot, getDocs, getDoc, doc, setDoc, addDoc,
   updateDoc, deleteDoc, serverTimestamp, Timestamp
@@ -16,9 +17,7 @@ import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
 import { extractFolderId } from '../lib/drive';
 
 const EMPTY_COURSE = {
-  name: '', code: '', deadline: '', allowLate: false,
-  fields: { url: true, description: true, file: false },
-  driveFolderId: '',
+  name: '', code: ''
 };
 
 export default function AdminPage() {
@@ -144,11 +143,7 @@ function CourseManager() {
   const openEdit = (c) => {
     setForm({
       name: c.name || '',
-      code: c.code || '',
-      deadline: toDatetimeLocalValue(c.deadline),
-      allowLate: !!c.allowLate,
-      fields: { url: !!c.fields?.url, description: !!c.fields?.description, file: !!c.fields?.file },
-      driveFolderId: c.driveFolderId || '',
+      code: c.code || ''
     });
     setEditingId(c.id);
     setOpen(true);
@@ -175,10 +170,6 @@ function CourseManager() {
       const payload = {
         name: form.name.trim(),
         code: form.code.trim(),
-        deadline: form.deadline ? Timestamp.fromDate(new Date(form.deadline)) : null,
-        allowLate: form.allowLate,
-        fields: form.fields,
-        driveFolderId: form.fields.file ? extractFolderId(form.driveFolderId) : '',
         updatedAt: serverTimestamp(),
       };
 
@@ -239,21 +230,15 @@ function CourseManager() {
                   <h3 className="text-lg font-bold text-slate-800">{c.name}</h3>
                   <div className="text-sm text-slate-400 mt-0.5">代碼：<span className="font-mono font-semibold text-indigo-600">{c.code}</span></div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => openEdit(c)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200"><Edit size={16} /></button>
-                  <button onClick={() => setDeleteId(c.id)} className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200"><Trash2 size={16} /></button>
+                <div className="flex flex-col gap-2">
+                  <Link to={`/admin/course/${c.id}`} className="text-center px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-medium text-sm rounded-lg transition-colors">
+                    管理作業
+                  </Link>
+                  <div className="flex gap-2">
+                    <button onClick={() => openEdit(c)} className="flex-1 p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200 flex justify-center"><Edit size={16} /></button>
+                    <button onClick={() => setDeleteId(c.id)} className="flex-1 p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 flex justify-center"><Trash2 size={16} /></button>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                <span className="flex items-center gap-1 text-slate-500"><CalendarClock size={13} /> {formatDeadline(c.deadline)}</span>
-                <span className={`px-2 py-0.5 rounded-full ${c.allowLate ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {c.allowLate ? '可補交' : '不可補交'}
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                {c.fields?.url && <Tag>網址</Tag>}
-                {c.fields?.description && <Tag>說明</Tag>}
-                {c.fields?.file && <Tag>檔案</Tag>}
               </div>
             </div>
           ))}
@@ -291,48 +276,6 @@ function CourseManager() {
                   className="px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium whitespace-nowrap">隨機產生</button>
               </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">繳交截止時間</label>
-              <input type="datetime-local" value={form.deadline} onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
-                className="ce-input" />
-              <p className="text-xs text-slate-400 mt-1">留空表示無期限。</p>
-            </div>
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.allowLate} onChange={(e) => setForm((f) => ({ ...f, allowLate: e.target.checked }))}
-                className="w-4 h-4 accent-indigo-600" />
-              <span className="text-sm font-medium text-slate-700">允許逾期補交（補交會被標記為遲交）</span>
-            </label>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">學生需繳交的欄位</label>
-              <div className="space-y-2">
-                <FieldToggle label="網站連結 (URL)" checked={form.fields.url}
-                  onChange={(v) => setForm((f) => ({ ...f, fields: { ...f.fields, url: v } }))} />
-                <FieldToggle label="專案說明" checked={form.fields.description}
-                  onChange={(v) => setForm((f) => ({ ...f, fields: { ...f.fields, description: v } }))} />
-                <FieldToggle label="檔案上傳 (Google Drive)" checked={form.fields.file}
-                  onChange={(v) => setForm((f) => ({ ...f, fields: { ...f.fields, file: v } }))} />
-              </div>
-              <p className="text-xs text-slate-400 mt-1">「題目 / 系統名稱」為必填，固定收集。</p>
-            </div>
-
-            {form.fields.file && (
-              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-700">
-                  繳交資料夾 (Google Drive) <span className="text-rose-500">*</span>
-                </label>
-                <input type="text" value={form.driveFolderId}
-                  onChange={(e) => setForm((f) => ({ ...f, driveFolderId: e.target.value }))}
-                  placeholder="貼上 Drive 資料夾連結或 ID" className="ce-input font-mono text-sm" />
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  學生的檔案會直接上傳到這個資料夾。請先在你的 Drive 建立資料夾，並
-                  <b>分享為「知道連結的人 → 編輯者」</b>，否則學生無法上傳。
-                  未填寫的話，學生將無法繳交檔案。
-                </p>
-              </div>
-            )}
           </form>
           <style>{`
             .ce-input { width:100%; padding:0.625rem 1rem; border-radius:0.75rem; border:1px solid #cbd5e1; outline:none; transition:all .15s; }

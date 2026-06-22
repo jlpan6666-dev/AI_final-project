@@ -9,6 +9,7 @@ import SetupProfilePage from './pages/SetupProfilePage';
 import HomePage from './pages/HomePage';
 import CoursePage from './pages/CoursePage';
 import AdminPage from './pages/AdminPage';
+import AdminCoursePage from './pages/AdminCoursePage';
 
 // 未登入 → 導向登入頁
 function RequireAuth() {
@@ -40,6 +41,7 @@ export default function App() {
             <Route element={<Layout />}>
               {/* 管理後台：教師/助教免填學生資料即可進入 */}
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/admin/course/:id" element={<AdminCoursePage />} />
 
               {/* 需登入 + 資料完整（管理者可略過） */}
               <Route element={<RequireProfile />}>
