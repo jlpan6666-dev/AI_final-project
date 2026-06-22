@@ -47,9 +47,13 @@
 
 ## 三、Drive 檔案上傳（Phase 6，已完成）
 
-當課程勾選「檔案上傳」欄位時，學生會看到「從 Google Drive 上傳」按鈕，
-透過 Google Picker（scope `drive.file`）把檔案**上傳到老師為該課程指定的 Drive 資料夾**，
-系統只保存檔案連結與檔名。
+當課程勾選「檔案上傳」欄位時，學生在**本平台介面內直接選檔上傳**（不開 Google Picker、
+看不到資料夾內容），透過 Drive API（scope `drive.file`）把檔案**上傳到老師為該課程指定的
+Drive 資料夾**，系統只保存檔案連結與檔名。採 resumable 上傳、支援大檔並顯示進度。
+
+> 直接上傳只需 OAuth 用戶端 ID（見 [`src/driveConfig.js`](src/driveConfig.js)），
+> **不需要 API 金鑰、也不需要啟用 Google Picker API**。只要啟用 **Google Drive API**、
+> OAuth 同意畫面已發布、且用戶端 ID 的 JavaScript 來源含本機與 Vercel 網址即可。
 
 ### 每門課要設定「繳交資料夾」
 1. 在你（老師）的 Google Drive 建立一個資料夾。
@@ -63,19 +67,17 @@
 
 設定值放在 [`src/driveConfig.js`](src/driveConfig.js)：
 - `clientId`：OAuth 2.0 用戶端 ID
-- `apiKey`：給 Picker 用的 API 金鑰（目前共用 Firebase 網頁金鑰）
-- `appId`：GCP 專案編號（`1011815467681`）
+- `scope`：`https://www.googleapis.com/auth/drive.file`
 
 ### Google Cloud Console 需完成（一次性）
-1. 專案 `ai-final-project-a69b4` 中啟用 **Google Drive API**、**Google Picker API**。
+1. 專案 `ai-final-project-a69b4` 中啟用 **Google Drive API**（Picker API 已不需要）。
 2. OAuth 同意畫面：使用者類型「外部」、**已發布 (In production)**、資料存取加入 `https://www.googleapis.com/auth/drive.file`（非敏感範圍，免審查）。**不要上傳 logo**，以免觸發強制驗證。
 3. OAuth 2.0 用戶端 ID（網頁應用程式）的「已授權 JavaScript 來源」需含：
    `http://localhost:5173` 與 `https://ai-final-project-ten.vercel.app`。
-4. 若 API 金鑰有設「API 限制」，務必把 **Google Picker API** 勾入，否則 Picker 會失敗。
 
 ### 注意事項
-- 系統會盡力把檔案權限設為「知道連結者可讀」方便老師批改；但**學校 Google Workspace 若停用外部分享**，此步驟可能失敗，屆時老師需請學生手動分享，或學生改用個人 Gmail 的 Drive。
-- 共用 Firebase API 金鑰可運作；若日後想分離，可在 Console 另建一把限制為 Google Picker API 的金鑰，替換 `driveConfig.js` 的 `apiKey` 即可。
+- 系統會盡力把檔案權限設為「知道連結者可讀」方便老師批改與排行榜檢視；但**學校 Google Workspace 若停用外部分享**，此步驟可能失敗，屆時老師需手動分享。
+- 直接上傳採 OAuth 權杖，不使用 API 金鑰，因此先前共用 Firebase 金鑰的疑慮已不存在。
 
 ---
 

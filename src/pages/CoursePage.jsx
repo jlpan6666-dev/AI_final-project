@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   doc, getDoc, collection, query, where, onSnapshot,
@@ -14,7 +14,7 @@ import { useToast } from '../context/ToastProvider';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import { formatDeadline, deadlineStatus } from '../lib/deadline';
-import { pickFromDrive } from '../lib/drivePicker';
+import { uploadFileToDrive } from '../lib/drive';
 
 const EMPTY_FORM = { title: '', description: '', url: '', fileUrl: '', fileName: '' };
 
@@ -34,7 +34,9 @@ export default function CoursePage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
-  const [drivePicking, setDrivePicking] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef(null);
 
   // 載入課程
   useEffect(() => {
@@ -107,24 +109,34 @@ export default function CoursePage() {
     setForm((f) => ({ ...f, [name]: value }));
   };
 
-  // 開啟 Google Drive Picker，上傳到老師指定的課程資料夾
-  const handleDrivePick = async () => {
+  // 在自家 UI 直接上傳本機檔案到老師指定的課程資料夾（不開 Picker、學生看不到資料夾）
+  const triggerFilePick = () => {
     if (!course?.driveFolderId) {
       showToast('老師尚未設定繳交資料夾，請聯絡老師', 'error');
       return;
     }
-    setDrivePicking(true);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 清空，讓同一個檔案可再次選取
+    if (!file) return;
+    if (!course?.driveFolderId) {
+      showToast('老師尚未設定繳交資料夾，請聯絡老師', 'error');
+      return;
+    }
+    setUploading(true);
+    setUploadProgress(0);
     try {
-      const file = await pickFromDrive(course.driveFolderId);
-      if (file) {
-        setForm((f) => ({ ...f, fileUrl: file.url, fileName: file.name }));
-        showToast(`已上傳檔案：${file.name}`, 'success');
-      }
+      const res = await uploadFileToDrive(file, course.driveFolderId, setUploadProgress);
+      setForm((f) => ({ ...f, fileUrl: res.url, fileName: res.name }));
+      showToast(`已上傳：${res.name}`, 'success');
     } catch (err) {
       console.error('Drive 上傳失敗:', err);
-      showToast('上傳失敗：請確認已登入 Google 並對繳交資料夾有編輯權限', 'error');
+      showToast('上傳失敗：請確認已授權 Google，且老師的繳交資料夾已設為可編輯', 'error');
     } finally {
-      setDrivePicking(false);
+      setUploading(false);
     }
   };
 
@@ -358,35 +370,49 @@ export default function CoursePage() {
 
             {fields.file && (
               <Field label="專案檔案 (Google Drive)" icon={<FileText size={15} />}>
+                <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelected} />
+
                 {!course?.driveFolderId ? (
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-2.5">
                     老師尚未設定繳交資料夾，暫時無法上傳檔案，請聯絡老師。
+                  </div>
+                ) : uploading ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+                      <span className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
+                        上傳中...
+                      </span>
+                      <span className="font-semibold text-indigo-600">{uploadProgress}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500 transition-all" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
                   </div>
                 ) : form.fileUrl ? (
                   <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
                     <a href={form.fileUrl} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-2 text-sm text-emerald-800 font-medium truncate hover:underline">
                       <Check size={16} className="flex-shrink-0" />
-                      <span className="truncate">{form.fileName || '已選擇檔案'}</span>
+                      <span className="truncate">{form.fileName || '已上傳檔案'}</span>
                     </a>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <button type="button" onClick={handleDrivePick} disabled={drivePicking}
+                      <button type="button" onClick={triggerFilePick}
                         className="text-xs text-emerald-700 hover:underline">更換</button>
                       <button type="button" onClick={() => setForm((f) => ({ ...f, fileUrl: '', fileName: '' }))}
                         className="text-xs text-slate-500 hover:text-rose-600">移除</button>
                     </div>
                   </div>
                 ) : (
-                  <button type="button" onClick={handleDrivePick} disabled={drivePicking}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all disabled:opacity-60">
-                    {drivePicking
-                      ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div> 開啟 Google Drive...</>
-                      : <><UploadCloud size={18} /> 從 Google Drive 上傳／選擇檔案</>}
+                  <button type="button" onClick={triggerFilePick}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all">
+                    <UploadCloud size={18} /> 選擇檔案上傳
                   </button>
                 )}
-                {course?.driveFolderId && (
+
+                {course?.driveFolderId && !uploading && (
                   <p className="text-xs text-slate-400 mt-1">
-                    檔案會上傳到老師指定的課程繳交資料夾；系統保存連結，並盡力設為「知道連結者可看」。
+                    在此直接選檔上傳，檔案會送到老師指定的繳交資料夾。
                   </p>
                 )}
               </Field>

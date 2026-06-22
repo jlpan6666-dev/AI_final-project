@@ -13,7 +13,7 @@ import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
-import { extractFolderId } from '../lib/drivePicker';
+import { extractFolderId } from '../lib/drive';
 
 const EMPTY_COURSE = {
   name: '', code: '', deadline: '', allowLate: false,
