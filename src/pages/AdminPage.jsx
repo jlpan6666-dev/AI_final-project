@@ -56,18 +56,30 @@ function BootstrapClaim() {
     e.preventDefault();
     setLoading(true);
     try {
-      // 1) 先寫入 adminClaims（Security Rules 會在伺服器端比對密碼，密碼不外洩）
+      // 1) 先寫入 adminClaims（Security Rules 會比對 pwd 是否等於 config/admin 的 secret 或 adminSecret）
+      // 若密碼不符合任何一個，此步就會拋出權限錯誤。
       await setDoc(doc(db, 'adminClaims', user.uid), {
         secret: pwd,
         createdAt: serverTimestamp(),
       });
-      // 2) 建立超級管理者身分
-      await setDoc(doc(db, 'admins', user.uid), {
-        role: 'super',
-        email: user.email || '',
-        createdAt: serverTimestamp(),
-      });
-      showToast('已成為超級管理者！', 'success');
+
+      // 2) 嘗試建立超級管理者身分
+      try {
+        await setDoc(doc(db, 'admins', user.uid), {
+          role: 'super',
+          email: user.email || '',
+          createdAt: serverTimestamp(),
+        });
+        showToast('已成功綁定為超級管理者！', 'success');
+      } catch (superErr) {
+        // 3) 若無法建立超級管理者，代表剛剛寫入的密碼是一般管理者密碼，改建為一般管理者
+        await setDoc(doc(db, 'admins', user.uid), {
+          role: 'admin',
+          email: user.email || '',
+          createdAt: serverTimestamp(),
+        });
+        showToast('已成功綁定為一般管理者！', 'success');
+      }
     } catch (err) {
       console.error('綁定失敗:', err);
       showToast('密碼錯誤，或尚未於後台設定密碼文件', 'error');

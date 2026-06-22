@@ -26,7 +26,10 @@ service cloud.firestore {
     match /adminClaims/{uid} {
       allow create: if isSignedIn()
         && request.auth.uid == uid
-        && request.resource.data.secret == get(/databases/$(database)/documents/config/admin).data.secret;
+        && (
+             request.resource.data.secret == get(/databases/$(database)/documents/config/admin).data.secret
+          || request.resource.data.secret == get(/databases/$(database)/documents/config/admin).data.get('adminSecret', 'UNSET')
+        );
       allow read, update, delete: if false;
     }
 
@@ -41,16 +44,21 @@ service cloud.firestore {
       // 自己可讀自己（檢查身分用）；super 可讀全部（管理名單用）
       allow get: if isSignedIn() && (request.auth.uid == uid || isSuper());
       allow list: if isSuper();
-      // 透過密碼綁定，自我建立為 super（需已存在合法的 adminClaims）
+      // 透過密碼綁定，自我建立為 super（需已存在合法的 adminClaims，且密碼相符）
       allow create: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.role == 'super'
-        && exists(/databases/$(database)/documents/adminClaims/$(uid));
+        && get(/databases/$(database)/documents/adminClaims/$(uid)).data.secret == get(/databases/$(database)/documents/config/admin).data.secret;
       // 透過邀請成為 admin
       allow create: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.role == 'admin'
         && exists(/databases/$(database)/documents/invitations/$(request.auth.token.email));
+      // 透過密碼綁定，自我建立為一般管理者（需已存在合法的 adminClaims，且密碼符合 adminSecret）
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'admin'
+        && get(/databases/$(database)/documents/adminClaims/$(uid)).data.secret == get(/databases/$(database)/documents/config/admin).data.get('adminSecret', 'UNSET');
       // super 可新增/調整/移除其他管理者（含同意升級）
       allow create, update, delete: if isSuper();
     }
