@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  collection, query, where, onSnapshot, getDoc, doc, setDoc, addDoc,
+  collection, query, where, onSnapshot, getDoc, doc, addDoc,
   updateDoc, deleteDoc, serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import {

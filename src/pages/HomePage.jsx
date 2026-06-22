@@ -3,12 +3,11 @@ import { Link } from 'react-router-dom';
 import {
   collection, query, where, onSnapshot, getDocs, doc, getDoc, setDoc, serverTimestamp
 } from 'firebase/firestore';
-import { BookOpen, Plus, LogIn, Clock, ChevronRight, CalendarClock } from 'lucide-react';
+import { BookOpen, Plus, LogIn, ChevronRight } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
 import { useToast } from '../context/ToastProvider';
 import Spinner from '../components/Spinner';
-import { formatDeadline, deadlineStatus } from '../lib/deadline';
 
 export default function HomePage() {
   const { user } = useAuth();

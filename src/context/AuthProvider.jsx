@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { doc, onSnapshot, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
+import { useToast } from './ToastProvider';
 
 const AuthContext = createContext(null);
 
@@ -15,6 +16,7 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }) {
+  const showToast = useToast();
   const [user, setUser] = useState(null);          // Firebase 使用者（僅真實 Google 帳號）
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -67,20 +69,21 @@ export function AuthProvider({ children }) {
           setAdminDoc({ id: snap.id, ...snap.data() });
           setAdminLoading(false);
         } else {
-          // 若無管理者文件，檢查是否有邀請信
+          // 若無管理者文件，檢查是否有對應 email 的邀請（自動接受）
           if (user.email) {
+            const emailKey = user.email.toLowerCase();
             try {
-              const invRef = doc(db, 'invitations', user.email);
+              const invRef = doc(db, 'invitations', emailKey);
               const invSnap = await getDoc(invRef);
               if (invSnap.exists()) {
                 await setDoc(doc(db, 'admins', user.uid), {
                   role: 'admin',
-                  email: user.email,
+                  email: emailKey,
                   createdAt: serverTimestamp(),
                 });
                 await deleteDoc(invRef);
-                alert('您已透過邀請自動成為一般管理者！');
-                return; // setDoc 會觸發下一次 onSnapshot，這裡不特別 setAdminLoading
+                showToast('已透過邀請自動成為一般管理者 🎉', 'success');
+                return; // setDoc 會觸發下一次 onSnapshot
               }
             } catch (err) {
               console.error('檢查邀請失敗:', err);
@@ -93,7 +96,7 @@ export function AuthProvider({ children }) {
       () => setAdminLoading(false)
     );
     return () => unsub();
-  }, [user]);
+  }, [user, showToast]);
 
   const login = () => signInWithPopup(auth, googleProvider);
   const logout = () => signOut(auth);

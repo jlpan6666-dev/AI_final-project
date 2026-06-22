@@ -13,8 +13,7 @@ import { useAuth } from '../context/AuthProvider';
 import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
-import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
-import { extractFolderId } from '../lib/drive';
+/* deadline / drive utilities moved into AdminCoursePage; kept imports clean here */
 
 const EMPTY_COURSE = {
   name: '', code: ''
@@ -70,7 +69,7 @@ function BootstrapClaim() {
           createdAt: serverTimestamp(),
         });
         showToast('已成功綁定為超級管理者！', 'success');
-      } catch (superErr) {
+      } catch {
         // 3) 若無法建立超級管理者，代表剛剛寫入的密碼是一般管理者密碼，改建為一般管理者
         await setDoc(doc(db, 'admins', user.uid), {
           role: 'admin',
@@ -95,7 +94,7 @@ function BootstrapClaim() {
           <Crown size={28} />
         </div>
         <h1 className="text-xl font-bold text-slate-800">成為管理者</h1>
-        <p className="text-slate-500 text-sm mt-1">輸入管理密碼即可將目前的 Google 帳號綁定為超級管理者。</p>
+        <p className="text-slate-500 text-sm mt-1">輸入管理密碼即可將目前的 Google 帳號綁定為管理者：<br/>輸入「超級管理者密碼」→ 成為超級管理者；<br/>輸入「一般管理者密碼」→ 成為一般管理者。</p>
       </div>
       <form onSubmit={handleClaim} className="space-y-4">
         <label className="text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
