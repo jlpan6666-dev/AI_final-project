@@ -14,11 +14,12 @@ import { useAuth } from '../context/AuthProvider';
 import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
+import RichTextEditor from '../components/RichTextEditor';
 import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
 import { extractFolderId, createDriveFolder } from '../lib/drive';
 
 const EMPTY_ASSIGNMENT = {
-  title: '', deadline: '', allowLate: false,
+  title: '', instructions: '', deadline: '', allowLate: false,
   fields: { url: true, description: true, file: false },
   driveFolderId: '',
 };
@@ -203,6 +204,7 @@ export default function AdminCoursePage() {
   const openEdit = (a) => {
     setForm({
       title: a.title || '',
+      instructions: a.instructions || '',
       deadline: toDatetimeLocalValue(a.deadline),
       allowLate: !!a.allowLate,
       fields: { url: !!a.fields?.url, description: !!a.fields?.description, file: !!a.fields?.file },
@@ -225,6 +227,7 @@ export default function AdminCoursePage() {
       const payload = {
         courseId: id,
         title: form.title.trim(),
+        instructions: form.instructions.trim(),
         deadline: form.deadline ? Timestamp.fromDate(new Date(form.deadline)) : null,
         allowLate: form.allowLate,
         fields: form.fields,
@@ -484,6 +487,16 @@ export default function AdminCoursePage() {
               <label className="block text-sm font-semibold text-slate-700 mb-1">作業標題 <span className="text-rose-500">*</span></label>
               <input type="text" required value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder="例如：期中專案、期末專題" className="ce-input" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">作業說明</label>
+              <RichTextEditor
+                value={form.instructions}
+                onChange={(html) => setForm((f) => ({ ...f, instructions: html }))}
+                placeholder="說明作業內容、要求、評分標準、繳交格式…（學生在繳交頁可看到）"
+              />
+              <p className="text-xs text-slate-400 mt-1">支援文字格式、清單、連結、圖片；學生繳交時會看到此說明。</p>
             </div>
 
             <div>

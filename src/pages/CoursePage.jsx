@@ -295,8 +295,8 @@ export default function CoursePage() {
             return (
               <div key={assign.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 {/* 作業標頭 & 繳交狀態區 */}
-                <div className="bg-slate-50 p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                  <div>
+                <div className="bg-slate-50 p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+                  <div className="flex-1 min-w-0">
                     <h2 className="text-xl font-bold text-slate-800">{assign.title}</h2>
                     <div className="flex flex-wrap items-center gap-3 mt-3">
                       <div className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -307,6 +307,12 @@ export default function CoursePage() {
                         <Clock size={12} /> {status.label}
                       </div>
                     </div>
+                    {assign.instructions && (
+                      <div
+                        className="mt-3 text-sm text-slate-700 bg-white border border-slate-200 rounded-xl px-4 py-3 leading-relaxed assignment-instructions"
+                        dangerouslySetInnerHTML={{ __html: assign.instructions }}
+                      />
+                    )}
                   </div>
                   
                   <div className="flex-shrink-0">
