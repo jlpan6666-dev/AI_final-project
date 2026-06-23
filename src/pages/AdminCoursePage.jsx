@@ -7,7 +7,7 @@ import {
 import {
   ArrowLeft, Plus, Edit, Trash2, CalendarClock, BookOpen, AlertCircle,
   Users, CheckCircle2, XCircle, Clock, ExternalLink, FileText, Search,
-  FolderOpen
+  FolderOpen, Rocket, PlayCircle
 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
@@ -15,6 +15,7 @@ import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import RichTextEditor from '../components/RichTextEditor';
+import { redeployFromDriveZip } from '../lib/redeploy';
 import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
 import { extractFolderId, createDriveFolder } from '../lib/drive';
 
@@ -53,6 +54,38 @@ function ConfirmDelete({ title, desc, onConfirm, onCancel }) {
 
 function Tag({ children }) {
   return <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium border border-slate-200">{children}</span>;
+}
+
+// 表格內每個學生 × 作業的小儲存格：上排「已繳」連結，下排「部署/預覽」按鈕
+function ProjectCell({ p, onRedeploy, deployState }) {
+  const state = deployState?.[p.id];
+  const isDeploying = state && state.stage !== 'done' && state.stage !== 'error';
+  const isDeployed = !!p.previewUrl;
+  const hasFile = !!p.fileUrl;
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <SubmissionBadge p={p} />
+      {hasFile && (
+        isDeploying ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-indigo-600 font-medium">
+            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-indigo-500"></div>
+            {state.pct}%
+          </span>
+        ) : isDeployed ? (
+          <a href={p.previewUrl} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline"
+            title="開啟線上預覽">
+            <PlayCircle size={11} /> 預覽
+          </a>
+        ) : (
+          <button onClick={() => onRedeploy(p)} title="重新部署成可預覽網站"
+            className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-600">
+            <Rocket size={11} /> 部署
+          </button>
+        )
+      )}
+    </div>
+  );
 }
 
 function SubmissionBadge({ p }) {
@@ -96,6 +129,9 @@ export default function AdminCoursePage() {
   const [students, setStudents] = useState([]);   // [{ uid, name, studentId, className, email }]
   const [projects, setProjects] = useState([]);   // 本課程所有 projects
   const [studentSearch, setStudentSearch] = useState('');
+
+  // 重新部署狀態（依 projectId 索引；以 stage 區分 start/download/unzip/upload/done/error）
+  const [deployState, setDeployState] = useState({}); // { [projectId]: { stage, msg, pct } }
 
   useEffect(() => {
     let active = true;
@@ -266,6 +302,35 @@ export default function AdminCoursePage() {
       showToast('儲存失敗，請稍後再試', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 重新部署：解壓學生繳交的 ZIP → 上傳 Storage → 更新 project.previewUrl
+  const handleRedeploy = async (project) => {
+    if (!project.fileUrl) {
+      showToast('此專案沒有附檔，無法部署', 'error');
+      return;
+    }
+    setDeployState((s) => ({ ...s, [project.id]: { stage: 'start', msg: '準備中...', pct: 0 } }));
+    try {
+      await redeployFromDriveZip({
+        driveSource: project.fileUrl,
+        destPrefix: `previews/${project.id}`,
+        onProgress: (stage, msg, pct) => {
+          setDeployState((s) => ({ ...s, [project.id]: { stage, msg, pct } }));
+        },
+      });
+      // 寫入預覽 URL（in-app 路由 + Vercel API 代理）
+      const previewUrl = `/preview/${project.id}`;
+      await updateDoc(doc(db, 'projects', project.id), {
+        previewUrl,
+        previewAt: serverTimestamp(),
+      });
+      showToast(`「${project.title || '專案'}」已部署完成`, 'success');
+    } catch (err) {
+      console.error('重新部署失敗:', err);
+      setDeployState((s) => ({ ...s, [project.id]: { stage: 'error', msg: err.message || '部署失敗', pct: 0 } }));
+      showToast(`部署失敗：${err.message || ''}`, 'error');
     }
   };
 
@@ -446,7 +511,7 @@ export default function AdminCoursePage() {
                     {assignments.length === 0 ? (
                       <td className="px-3 py-2.5 text-center">
                         {projectIndex[s.uid]?.['__legacy__']
-                          ? <SubmissionBadge p={projectIndex[s.uid]['__legacy__']} />
+                          ? <ProjectCell p={projectIndex[s.uid]['__legacy__']} onRedeploy={handleRedeploy} deployState={deployState} />
                           : <span className="text-slate-300">—</span>}
                       </td>
                     ) : (
@@ -454,7 +519,9 @@ export default function AdminCoursePage() {
                         const p = projectIndex[s.uid]?.[a.id];
                         return (
                           <td key={a.id} className="px-3 py-2.5 text-center">
-                            {p ? <SubmissionBadge p={p} /> : <span className="text-rose-300 font-bold">✕</span>}
+                            {p
+                              ? <ProjectCell p={p} onRedeploy={handleRedeploy} deployState={deployState} />
+                              : <span className="text-rose-300 font-bold">✕</span>}
                           </td>
                         );
                       })
