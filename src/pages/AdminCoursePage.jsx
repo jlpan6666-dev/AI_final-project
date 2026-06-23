@@ -6,7 +6,8 @@ import {
 } from 'firebase/firestore';
 import {
   ArrowLeft, Plus, Edit, Trash2, CalendarClock, BookOpen, AlertCircle,
-  Users, CheckCircle2, XCircle, Clock, ExternalLink, FileText, Search
+  Users, CheckCircle2, XCircle, Clock, ExternalLink, FileText, Search,
+  FolderOpen
 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
@@ -14,7 +15,7 @@ import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import { toDatetimeLocalValue, formatDeadline } from '../lib/deadline';
-import { extractFolderId } from '../lib/drive';
+import { extractFolderId, createDriveFolder } from '../lib/drive';
 
 const EMPTY_ASSIGNMENT = {
   title: '', deadline: '', allowLate: false,
@@ -235,11 +236,26 @@ export default function AdminCoursePage() {
         await updateDoc(doc(db, 'assignments', editingId), payload);
         showToast('作業已更新', 'success');
       } else {
-        await addDoc(collection(db, 'assignments'), {
+        const ref = await addDoc(collection(db, 'assignments'), {
           ...payload,
           createdAt: serverTimestamp(),
         });
         showToast('作業已建立', 'success');
+
+        // 若課程有 Drive 資料夾且使用者沒手動指定，自動建立作業子資料夾
+        if (form.fields.file && !payload.driveFolderId && course?.driveFolderId) {
+          try {
+            const folder = await createDriveFolder(payload.title, course.driveFolderId);
+            await updateDoc(doc(db, 'assignments', ref.id), {
+              driveFolderId: folder.id,
+              driveFolderUrl: folder.webViewLink || '',
+            });
+            showToast(`已建立作業資料夾「${folder.name}」`, 'success');
+          } catch (driveErr) {
+            console.error('建立作業 Drive 資料夾失敗:', driveErr);
+            showToast('作業已建立，但 Drive 資料夾建立失敗，請手動處理', 'error');
+          }
+        }
       }
       close();
     } catch (err) {
@@ -276,10 +292,21 @@ export default function AdminCoursePage() {
             </h1>
             <p className="text-slate-500 mt-1">課程代碼：<span className="font-mono font-semibold text-slate-700">{course.code}</span></p>
           </div>
-          <button onClick={openCreate}
-            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm">
-            <Plus size={18} /> 新增作業單元
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {course.driveFolderId && (
+              <a
+                href={course.driveFolderUrl || `https://drive.google.com/drive/folders/${course.driveFolderId}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-medium transition-colors"
+              >
+                <FolderOpen size={18} /> 課程資料夾 <ExternalLink size={12} className="opacity-60" />
+              </a>
+            )}
+            <button onClick={openCreate}
+              className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm">
+              <Plus size={18} /> 新增作業單元
+            </button>
+          </div>
         </div>
       </div>
 
@@ -312,6 +339,18 @@ export default function AdminCoursePage() {
                 {a.fields?.description && <Tag>說明</Tag>}
                 {a.fields?.file && <Tag>檔案</Tag>}
               </div>
+
+              {a.fields?.file && a.driveFolderId && (
+                <a
+                  href={`https://drive.google.com/drive/folders/${a.driveFolderId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors"
+                >
+                  <FolderOpen size={16} /> 開啟學生繳交資料夾
+                  <ExternalLink size={12} className="opacity-60" />
+                </a>
+              )}
             </div>
           </div>
         ))}
@@ -476,15 +515,19 @@ export default function AdminCoursePage() {
             {form.fields.file && (
               <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1.5">
                 <label className="block text-sm font-semibold text-slate-700">
-                  繳交資料夾 (Google Drive) <span className="text-rose-500">*</span>
+                  繳交資料夾 (Google Drive){' '}
+                  <span className="text-xs font-normal text-slate-500">(留空自動建立)</span>
                 </label>
                 <input type="text" value={form.driveFolderId}
                   onChange={(e) => setForm((f) => ({ ...f, driveFolderId: e.target.value }))}
-                  placeholder="貼上 Drive 資料夾連結或 ID" className="ce-input font-mono text-sm" />
+                  placeholder={course?.driveFolderId
+                    ? '留空：系統會在課程資料夾下自動建立同名子資料夾'
+                    : '請貼上 Drive 資料夾連結或 ID'}
+                  className="ce-input font-mono text-sm" />
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  學生的檔案會直接上傳到這個資料夾。請先在你的 Drive 建立資料夾，並
-                  <b>分享為「知道連結的人 → 編輯者」</b>，否則學生無法上傳。
-                  未填寫的話，學生將無法繳交檔案。
+                  {course?.driveFolderId
+                    ? <>建議留空，系統會自動在課程資料夾「<b>{course.name}</b>」下建立作業同名子資料夾。若要指定其他資料夾，貼上連結即可。</>
+                    : <>本課程尚未綁定 Drive 資料夾。請手動貼上資料夾連結，並<b>分享為「知道連結的人 → 編輯者」</b>。或請超管在後台「雲端資料夾設定」初始化並重建課程。</>}
                 </p>
               </div>
             )}

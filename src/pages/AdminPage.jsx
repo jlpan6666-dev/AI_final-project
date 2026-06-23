@@ -6,14 +6,15 @@ import {
 } from 'firebase/firestore';
 import {
   Shield, Lock, Plus, Edit, Trash2, BookOpen, UserCog, Crown,
-  Check, X, Mail, AlertCircle, Send, CalendarClock
+  Check, X, Mail, AlertCircle, Send, CalendarClock,
+  FolderOpen, FolderPlus, ExternalLink
 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthProvider';
 import { useToast } from '../context/ToastProvider';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
-/* deadline / drive utilities moved into AdminCoursePage; kept imports clean here */
+import { createDriveFolder } from '../lib/drive';
 
 const EMPTY_COURSE = {
   name: '', code: ''
@@ -35,9 +36,98 @@ export default function AdminPage() {
         </span>
       </div>
 
+      {isSuper && <DriveSetup />}
       <CourseManager />
       <AdminManager />
     </div>
+  );
+}
+
+// ==========================================
+// 雲端資料夾根設定（super only）
+// ==========================================
+function DriveSetup() {
+  const { user } = useAuth();
+  const showToast = useToast();
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'drive'), (snap) => {
+      setConfig(snap.exists() ? snap.data() : null);
+      setLoading(false);
+    }, () => setLoading(false));
+    return () => unsub();
+  }, []);
+
+  const handleCreateRoot = async () => {
+    setCreating(true);
+    try {
+      const folder = await createDriveFolder('課程學習平台-繳交根資料夾', null);
+      await setDoc(doc(db, 'config', 'drive'), {
+        rootFolderId: folder.id,
+        rootFolderName: folder.name,
+        rootFolderUrl: folder.webViewLink || '',
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      showToast('已在你的 Drive 建立根資料夾！', 'success');
+    } catch (err) {
+      console.error('建立根資料夾失敗:', err);
+      showToast('建立失敗：請確認已授權 Google Drive', 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+        <FolderOpen size={20} className="text-indigo-600" /> 雲端資料夾設定
+      </h2>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+        {loading ? (
+          <p className="text-sm text-slate-500">載入設定中...</p>
+        ) : config?.rootFolderId ? (
+          <div className="space-y-3">
+            <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
+              <div className="min-w-0">
+                <div className="text-sm text-slate-500">目前根資料夾</div>
+                <div className="font-semibold text-slate-800 truncate">{config.rootFolderName || '(未命名)'}</div>
+              </div>
+              <a
+                href={config.rootFolderUrl || `https://drive.google.com/drive/folders/${config.rootFolderId}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-medium"
+              >
+                <FolderOpen size={15} /> 開啟資料夾 <ExternalLink size={12} className="opacity-60" />
+              </a>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              新建課程會自動在此資料夾下建立同名子資料夾；新建作業會在課程資料夾下建立作業子資料夾。
+              學生上傳的檔案會送進對應的作業資料夾。
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600 leading-relaxed">
+              尚未設定根資料夾。按下按鈕，系統會在你（目前登入者）的 Google Drive 自動建立一個
+              「課程學習平台-繳交根資料夾」，做為所有課程/作業子資料夾的容器。
+            </p>
+            <button
+              onClick={handleCreateRoot}
+              disabled={creating}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors disabled:opacity-70"
+            >
+              {creating
+                ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> 建立中...</>
+                : <><FolderPlus size={18} /> 建立根資料夾</>}
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -124,6 +214,7 @@ function CourseManager() {
   const [form, setForm] = useState(EMPTY_COURSE);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [rootFolderId, setRootFolderId] = useState(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -131,6 +222,14 @@ function CourseManager() {
       setCourses(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setLoading(false);
     }, () => setLoading(false));
+    return () => unsub();
+  }, []);
+
+  // 讀取根資料夾設定（用於自動建立課程資料夾）
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'drive'), (snap) => {
+      setRootFolderId(snap.exists() ? snap.data().rootFolderId : null);
+    }, () => setRootFolderId(null));
     return () => unsub();
   }, []);
 
@@ -176,12 +275,27 @@ function CourseManager() {
         await updateDoc(doc(db, 'courses', editingId), payload);
         showToast('課程已更新', 'success');
       } else {
-        await addDoc(collection(db, 'courses'), {
+        const ref = await addDoc(collection(db, 'courses'), {
           ...payload,
           ownerUid: user.uid,
           createdAt: serverTimestamp(),
         });
         showToast('課程已建立', 'success');
+
+        // 自動在根資料夾下建立同名課程資料夾（失敗不影響課程建立）
+        if (rootFolderId) {
+          try {
+            const folder = await createDriveFolder(payload.name, rootFolderId);
+            await updateDoc(doc(db, 'courses', ref.id), {
+              driveFolderId: folder.id,
+              driveFolderUrl: folder.webViewLink || '',
+            });
+            showToast(`已在 Drive 建立課程資料夾「${folder.name}」`, 'success');
+          } catch (driveErr) {
+            console.error('建立課程 Drive 資料夾失敗:', driveErr);
+            showToast('課程已建立，但 Drive 資料夾建立失敗，請稍後到後台手動處理', 'error');
+          }
+        }
       }
       close();
     } catch (err) {

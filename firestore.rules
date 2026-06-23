@@ -22,6 +22,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 雲端資料夾根設定（給管理者用，記錄超管 Drive 中的根資料夾 ID）
+    // 比上面的 wildcard 規則更具體，授權獨立生效
+    match /config/drive {
+      allow read: if isAdmin();
+      allow create, update: if isSuper();
+      allow delete: if isSuper();
+    }
+
     // 首次綁定管理者：寫入時由 Rules 在伺服器端比對密碼，密碼永不外洩，且寫入後不可被讀回
     match /adminClaims/{uid} {
       allow create: if isSignedIn()

@@ -45,6 +45,30 @@ async function getAccessToken() {
   });
 }
 
+// 在指定父資料夾下建立資料夾，回傳 { id, name, webViewLink }
+// parentFolderId 可為空 → 建在 Drive 根目錄
+export async function createDriveFolder(name, parentFolderId) {
+  const token = await getAccessToken();
+  const body = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+    ...(parentFolderId ? { parents: [parentFolderId] } : {}),
+  };
+  const res = await fetch(
+    'https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`建立資料夾失敗 (${res.status}) ${txt}`);
+  }
+  return await res.json();
+}
+
 // 盡力把檔案設為「任何知道連結的人可讀」，方便老師與排行榜檢視（失敗則略過）
 async function tryShareAnyone(fileId, token) {
   try {
